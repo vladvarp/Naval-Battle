@@ -1,473 +1,1355 @@
-
 <!DOCTYPE html>
-<html lang="ru" data-accept-language="ru,en,hy,es">
-    <head>
-        <script>
-            (() => {
-                const checkTimeInMs = 10000;
-                const startTime = +new Date();
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Морской Бой</title>
+<style>
+  /* ── ШРИФТЫ ─────────────────────────────────────────── */
+  @import url('https://fonts.googleapis.com/css2?family=Russo+One&family=Share+Tech+Mono&display=swap');
 
-                let loaded = false;
+  /* ── ПЕРЕМЕННЫЕ ─────────────────────────────────────── */
+  :root {
+    --sea-deep:    #020d18;
+    --sea-mid:     #041f35;
+    --sea-light:   #073358;
+    --water:       #0a4975;
+    --wave:        #0e6ba8;
+    --foam:        #1a9fd4;
+    --ice:         #a8e4ff;
+    --white:       #e8f4ff;
+    --hit:         #ff4444;
+    --miss:        #3a7bd5;
+    --sunk:        #ff6b00;
+    --ship:        #2ecc71;
+    --ship-hit:    #ff4444;
+    --my-ship:     #27ae60;
+    --gold:        #f0c040;
+    --red:         #e74c3c;
+    --cell-size:   36px;
+    --gap:         2px;
+    --radius:      4px;
+  }
 
-                const checkLoading = () => {
-                    if (loaded) {
-                        return;
-                    }
+  /* ── СБРОС И БАЗОВЫЕ СТИЛИ ───────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-                    const currentTime = +new Date();
+  body {
+    background: var(--sea-deep);
+    color: var(--white);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+    background-image:
+      radial-gradient(ellipse at 20% 50%, rgba(6,60,120,0.3) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(4,40,80,0.4) 0%, transparent 50%);
+  }
 
-                    if (currentTime - startTime > checkTimeInMs) {
-                        document.write('<div id="isp" style="position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%)">It looks like your ISP is blocking the page loading.</div>');
+  /* ── АНИМАЦИИ ─────────────────────────────────────────── */
+  @keyframes wave {
+    0%, 100% { transform: translateY(0); }
+    50%       { transform: translateY(-4px); }
+  }
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 8px var(--foam); }
+    50%       { box-shadow: 0 0 20px var(--foam), 0 0 40px rgba(26,159,212,0.3); }
+  }
+  @keyframes hit-flash {
+    0%   { background: var(--hit); transform: scale(1.3); }
+    100% { background: var(--ship-hit); transform: scale(1); }
+  }
+  @keyframes miss-ripple {
+    0%   { transform: scale(0.5); opacity: 1; }
+    100% { transform: scale(1.5); opacity: 0; }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes scanline {
+    0%   { top: -10%; }
+    100% { top: 110%; }
+  }
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+  }
 
-                        return;
-                    }
+  /* ── ШАПКА ────────────────────────────────────────────── */
+  header {
+    text-align: center;
+    padding: 24px 20px 16px;
+    position: relative;
+    border-bottom: 1px solid rgba(26,159,212,0.2);
+  }
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px; left: 50%;
+    transform: translateX(-50%);
+    width: 200px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--foam), transparent);
+  }
+  .logo {
+    font-family: 'Russo One', sans-serif;
+    font-size: clamp(28px, 5vw, 48px);
+    letter-spacing: 6px;
+    color: var(--white);
+    text-shadow: 0 0 30px rgba(26,159,212,0.6), 0 0 60px rgba(26,159,212,0.2);
+    animation: wave 4s ease-in-out infinite;
+  }
+  .logo span {
+    color: var(--foam);
+  }
+  .subtitle {
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: rgba(168,228,255,0.5);
+    margin-top: 4px;
+  }
 
-                    setTimeout(checkLoading, 1000);
-                };
+  /* ── ОСНОВНОЙ КОНТЕЙНЕР ──────────────────────────────── */
+  .app {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px;
+  }
 
-                document.addEventListener("DOMContentLoaded", () => {
-                    loaded = true;
+  /* ── ЭКРАН ВХОДА ─────────────────────────────────────── */
+  #loginScreen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    gap: 20px;
+    animation: fadeIn 0.4s ease;
+  }
+  .login-card {
+    background: rgba(4,31,53,0.8);
+    border: 1px solid rgba(26,159,212,0.25);
+    border-radius: 12px;
+    padding: 36px 40px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+    position: relative;
+    overflow: hidden;
+  }
+  .login-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--foam), transparent);
+  }
+  .login-card h2 {
+    font-family: 'Russo One', sans-serif;
+    font-size: 16px;
+    letter-spacing: 3px;
+    color: var(--foam);
+    margin-bottom: 24px;
+    text-align: center;
+  }
 
-                    const isp = document.getElementById("isp");
+  .field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .field-group label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: rgba(168,228,255,0.6);
+  }
+  input[type="text"],
+  input[type="password"],
+  input[type="number"] {
+    background: rgba(2,13,24,0.8);
+    border: 1px solid rgba(26,159,212,0.3);
+    border-radius: 6px;
+    color: var(--white);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 14px;
+    padding: 10px 14px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    width: 100%;
+  }
+  input:focus {
+    border-color: var(--foam);
+    box-shadow: 0 0 0 3px rgba(26,159,212,0.15);
+  }
 
-                    if (isp) {
-                        document.body.removeChild(isp);
-                    }
-                });
+  .hint {
+    font-size: 10px;
+    color: rgba(168,228,255,0.4);
+    margin-top: 2px;
+  }
 
-                checkLoading();
-            })();
-        </script>
-        <script>
-            (function (window, document) {
-                return true;
+  /* ── КНОПКИ ──────────────────────────────────────────── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 11px 24px;
+    border: none;
+    border-radius: 6px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    width: 100%;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--wave), var(--foam));
+    color: var(--sea-deep);
+    font-weight: bold;
+  }
+  .btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(26,159,212,0.4);
+  }
+  .btn-danger {
+    background: linear-gradient(135deg, #8b0000, var(--red));
+    color: var(--white);
+  }
+  .btn-danger:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(231,76,60,0.4);
+  }
+  .btn-ghost {
+    background: rgba(26,159,212,0.1);
+    color: var(--foam);
+    border: 1px solid rgba(26,159,212,0.3);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: rgba(26,159,212,0.2);
+  }
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .btn-sm {
+    padding: 7px 14px;
+    font-size: 11px;
+    width: auto;
+  }
 
-                if (window.Node && Node.prototype) {
-                    var sandbox;
-                    var timeout;
-                    var safe = false;
-                    var scriptsCache = [];
-                    var scripts = [];
-                    var proto = Node.prototype;
-                    var methods = ["insertBefore", "replaceChild", "appendChild"];
-                    var append = function () {
-                        sandbox = sandbox || document.getElementsByTagName("body")[0];
-                        if (sandbox) {
-                            scripts.forEach(function (src, i, scripts) {
-                                var script = document.createElement("script");
-                                script.src = src;
-                                safe = true;
-                                sandbox.appendChild(script);
-                                safe = false;
-                                scripts.splice(i, 1);
-                            });
-                            return;
-                        }
-                        clearTimeout(timeout);
-                        timeout = setTimeout(append, 0);
-                    };
-                    methods.forEach(function (method) {
-                        var origin = proto[method];
-                        proto[method] = function (el) {
-                            if (el.nodeName && el.nodeName.toLowerCase() == "script" && !safe) {
-                                var safeScripts = [
-                                    "mc.yandex.ru",
-                                    "apis.google.com",
-                                    "pagead2.googlesyndication.com"
-                                ];
-                                var safeScriptsRegExp = new RegExp("^(https?:)//" + safeScripts.join("|"), "i");
-                                if (el.src && safeScripts.length && safeScriptsRegExp.test(el.src)) {
-                                    if (scriptsCache.indexOf(el.src) == -1) {
-                                        scripts.push(el.src);
-                                        scriptsCache.push(el.src);
-                                        return origin.apply(this, arguments);
-                                    }
-                                }
-                                return false;
-                            } else {
-                                return origin.apply(this, arguments);
-                            }
-                        };
-                    });
-                }
-            })(window, document);
-        </script>
+  /* ── СООБЩЕНИЯ ───────────────────────────────────────── */
+  .message {
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    letter-spacing: 1px;
+    margin-top: 12px;
+    animation: fadeIn 0.3s ease;
+  }
+  .message-error {
+    background: rgba(231,76,60,0.15);
+    border: 1px solid rgba(231,76,60,0.4);
+    color: #ff8080;
+  }
+  .message-success {
+    background: rgba(46,204,113,0.12);
+    border: 1px solid rgba(46,204,113,0.3);
+    color: #7dffb3;
+  }
+  .message-info {
+    background: rgba(26,159,212,0.12);
+    border: 1px solid rgba(26,159,212,0.3);
+    color: var(--foam);
+  }
 
-        <!--
-        <script>
-            var url = location.href;
+  /* ── РАЗДЕЛИТЕЛЬ ─────────────────────────────────────── */
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 20px 0;
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(26,159,212,0.2);
+  }
+  .divider span {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: rgba(168,228,255,0.4);
+  }
 
-            if (/^(http:)\/\/([a-z]{2})\.(battleship-game\.org)(.+)$/.test(url)) {
-                location.href = url.replace(/^(http:)\/\/([a-z]{2})\.(battleship-game\.org)(.+)$/, 'https://$3/$2$4');
-            }
+  /* ── ИГРОВОЙ ЭКРАН ───────────────────────────────────── */
+  #gameScreen {
+    display: none;
+    animation: fadeIn 0.4s ease;
+  }
 
-            if (location.protocol === 'https:' && !window.isSecureContext) {
-                //problem with ssl
-            }
-        </script>
-        -->
+  /* ── СТАТУС-БАР ──────────────────────────────────────── */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(4,31,53,0.7);
+    border: 1px solid rgba(26,159,212,0.2);
+    border-radius: 8px;
+    padding: 12px 20px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .status-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .status-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: rgba(168,228,255,0.4);
+  }
+  .status-value {
+    font-size: 14px;
+    color: var(--white);
+    letter-spacing: 1px;
+  }
+  .status-value.active {
+    color: var(--foam);
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  .status-phase {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .phase-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--foam);
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+  .phase-dot.waiting { background: var(--gold); }
+  .phase-dot.playing { background: var(--ship); }
+  .phase-dot.finished { background: var(--red); animation: none; }
 
-        <meta charset="utf-8" />
+  /* ── ИГРОВЫЕ ПОЛЯ ────────────────────────────────────── */
+  .boards-container {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .board-panel {
+    background: rgba(4,31,53,0.6);
+    border: 1px solid rgba(26,159,212,0.2);
+    border-radius: 10px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+    overflow: hidden;
+  }
+  .board-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(26,159,212,0.4), transparent);
+  }
+  .board-title {
+    font-family: 'Russo One', sans-serif;
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: rgba(168,228,255,0.7);
+  }
+  .board-title.enemy { color: var(--red); }
 
-        <title>Морской бой (онлайн-игра для двоих)</title>
-        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  /* ── СЕТКА ПОЛЯ ──────────────────────────────────────── */
+  .grid-wrapper {
+    display: flex;
+    gap: 0;
+  }
+  .grid-labels-col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+    margin-top: calc(var(--cell-size) + var(--gap));
+    margin-right: 4px;
+  }
+  .grid-labels-row {
+    display: flex;
+    gap: var(--gap);
+    margin-left: 0;
+    margin-bottom: 4px;
+    padding-left: 24px;
+  }
+  .grid-label {
+    width: var(--cell-size);
+    height: var(--cell-size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: rgba(168,228,255,0.35);
+    letter-spacing: 0;
+  }
+  .grid-label-side {
+    width: 20px;
+    height: var(--cell-size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: rgba(168,228,255,0.35);
+  }
 
-        <link rel="stylesheet" href="/static/build/1032/css/style.css" />
-        <!--[if IE 8]><link rel="stylesheet" href="/static/build/1032/css/style.ie8.css" /><![endif]-->
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(10, var(--cell-size));
+    grid-template-rows:    repeat(10, var(--cell-size));
+    gap: var(--gap);
+  }
 
-        <link rel="shortcut icon" href="/static/favicon.ico" />
-        <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
+  /* ── КЛЕТКИ ПОЛЯ ─────────────────────────────────────── */
+  .cell {
+    width: var(--cell-size);
+    height: var(--cell-size);
+    border-radius: var(--radius);
+    background: rgba(7,51,88,0.5);
+    border: 1px solid rgba(10,73,117,0.6);
+    transition: background 0.15s, transform 0.1s, border-color 0.15s;
+    cursor: default;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    position: relative;
+    overflow: hidden;
+  }
 
-        <script>
-            window.onerror = function (message, file, line) {
-                if (arguments.length > 2) {
-                    if (file.indexOf("battleship-game.org") != -1) {
-                        (new Image()).src = "/api/error/?key=" + window.name + "&message=" + message + "&ua=" + navigator.userAgent + "&file=" + file + "&line=" + line;
-                    }
-                }
-            };
-        </script>
+  /* Клетки поля противника — кликабельные */
+  .cell.enemy-cell.shootable {
+    cursor: crosshair;
+  }
+  .cell.enemy-cell.shootable:hover {
+    background: rgba(26,159,212,0.25);
+    border-color: var(--foam);
+    transform: scale(1.08);
+    z-index: 2;
+  }
 
-        <script src="/static/build/1032/js/pagead2.js"></script>
-        <script src="/static/build/1032/js/script.js">{"i18n":{"lang":"ru","title":"Морской бой","letters":"А,Б,В,Г,Д,Е,Ж,З,И,К","whoIsOnline":"%d %plural(%d|игрок|игрока|игроков)% онлайн"},"version":1032,"subdomain":"ru","staticHostname":""}</script>
+  /* Корабль (собственное поле) */
+  .cell.ship {
+    background: rgba(39,174,96,0.4);
+    border-color: rgba(46,204,113,0.6);
+  }
+  .cell.ship::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 2px;
+    background: rgba(46,204,113,0.3);
+  }
 
-        <link rel="alternate" hreflang="be" href="https://battleship-game.org/be/" /><link rel="alternate" hreflang="ca" href="https://battleship-game.org/ca/" /><link rel="alternate" hreflang="cs" href="https://battleship-game.org/cs/" /><link rel="alternate" hreflang="da" href="https://battleship-game.org/da/" /><link rel="alternate" hreflang="de" href="https://battleship-game.org/de/" /><link rel="alternate" hreflang="el" href="https://battleship-game.org/el/" /><link rel="alternate" hreflang="en" href="https://battleship-game.org/en/" /><link rel="alternate" hreflang="es" href="https://battleship-game.org/es/" /><link rel="alternate" hreflang="fr" href="https://battleship-game.org/fr/" /><link rel="alternate" hreflang="hu" href="https://battleship-game.org/hu/" /><link rel="alternate" hreflang="hy" href="https://battleship-game.org/hy/" /><link rel="alternate" hreflang="it" href="https://battleship-game.org/it/" /><link rel="alternate" hreflang="ko" href="https://battleship-game.org/ko/" /><link rel="alternate" hreflang="lv" href="https://battleship-game.org/lv/" /><link rel="alternate" hreflang="nl" href="https://battleship-game.org/nl/" /><link rel="alternate" hreflang="ja" href="https://battleship-game.org/ja/" /><link rel="alternate" hreflang="pl" href="https://battleship-game.org/pl/" /><link rel="alternate" hreflang="pt" href="https://battleship-game.org/pt/" /><link rel="alternate" hreflang="ru" href="https://battleship-game.org/ru/" /><link rel="alternate" hreflang="sr" href="https://battleship-game.org/sr/" /><link rel="alternate" hreflang="fi" href="https://battleship-game.org/fi/" /><link rel="alternate" hreflang="sv" href="https://battleship-game.org/sv/" /><link rel="alternate" hreflang="tr" href="https://battleship-game.org/tr/" /><link rel="alternate" hreflang="uk" href="https://battleship-game.org/uk/" /><link rel="alternate" hreflang="zh" href="https://battleship-game.org/zh/" />
+  /* Попадание */
+  .cell.hit {
+    background: rgba(255,68,68,0.5);
+    border-color: var(--hit);
+    animation: hit-flash 0.3s ease;
+  }
+  .cell.hit::after {
+    content: '✕';
+    color: var(--hit);
+    font-size: 18px;
+    font-weight: bold;
+    text-shadow: 0 0 8px var(--hit);
+  }
 
-        <link rel="alternate" hreflang="x-default" href="https://battleship-game.org/" />
+  /* Потоплен */
+  .cell.sunk {
+    background: rgba(255,107,0,0.45);
+    border-color: var(--sunk);
+  }
+  .cell.sunk::after {
+    content: '✕';
+    color: var(--sunk);
+    font-size: 18px;
+    font-weight: bold;
+    text-shadow: 0 0 10px var(--sunk);
+  }
 
-        <link rel="author" href="/static/humans.txt" />
+  /* Промах */
+  .cell.miss {
+    background: rgba(58,123,213,0.2);
+    border-color: rgba(58,123,213,0.5);
+  }
+  .cell.miss::after {
+    content: '·';
+    color: rgba(168,228,255,0.6);
+    font-size: 22px;
+    line-height: 1;
+  }
 
-        <meta name="description" content="Морской бой — онлайн-игра для двух соперников. Заходите, расставляйте корабли, дождитесь противника и начинайте играть вдвоем." />
+  /* Корабль подбит (собственное поле) */
+  .cell.my-hit {
+    background: rgba(255,68,68,0.35);
+    border-color: var(--hit);
+  }
+  .cell.my-hit::after {
+    content: '✕';
+    color: var(--hit);
+    font-size: 18px;
+  }
+  .cell.my-sunk {
+    background: rgba(255,107,0,0.35);
+    border-color: var(--sunk);
+  }
+  .cell.my-sunk::after {
+    content: '✕';
+    color: var(--sunk);
+    font-size: 16px;
+  }
 
-        <meta name="google-site-verification" content="H9dKy22eCZUymFFpfDkSs8ufVYF83ywTadl5sIBtV9Q" />
+  /* ── ЛЕНТА СОБЫТИЙ ───────────────────────────────────── */
+  .log-panel {
+    background: rgba(4,31,53,0.6);
+    border: 1px solid rgba(26,159,212,0.2);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+  .log-panel h3 {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: rgba(168,228,255,0.5);
+    margin-bottom: 10px;
+  }
+  .log-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .log-list::-webkit-scrollbar { width: 4px; }
+  .log-list::-webkit-scrollbar-track { background: transparent; }
+  .log-list::-webkit-scrollbar-thumb { background: rgba(26,159,212,0.3); border-radius: 2px; }
+  .log-entry {
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: rgba(2,13,24,0.4);
+    animation: fadeIn 0.3s ease;
+  }
+  .log-entry.hit  { color: var(--hit);  border-left: 2px solid var(--hit); }
+  .log-entry.miss { color: var(--miss); border-left: 2px solid var(--miss); }
+  .log-entry.sunk { color: var(--sunk); border-left: 2px solid var(--sunk); }
+  .log-entry .ts  { color: rgba(168,228,255,0.3); margin-right: 8px; font-size: 10px; }
 
-        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-        <meta http-equiv="Pragma" content="no-cache" />
-        <meta http-equiv="Expires" content="0" />
+  /* ── ПАНЕЛЬ ПОБЕДИТЕЛЯ ───────────────────────────────── */
+  .winner-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(2,13,24,0.88);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .winner-overlay.show { display: flex; }
+  .winner-card {
+    background: rgba(4,31,53,0.97);
+    border: 2px solid var(--gold);
+    border-radius: 16px;
+    padding: 48px 56px;
+    text-align: center;
+    box-shadow: 0 0 80px rgba(240,192,64,0.2);
+    animation: fadeIn 0.5s ease;
+  }
+  .winner-card .crown { font-size: 56px; margin-bottom: 16px; }
+  .winner-card h2 {
+    font-family: 'Russo One', sans-serif;
+    font-size: 28px;
+    letter-spacing: 4px;
+    color: var(--gold);
+    text-shadow: 0 0 20px rgba(240,192,64,0.4);
+    margin-bottom: 8px;
+  }
+  .winner-card p {
+    color: rgba(168,228,255,0.6);
+    font-size: 13px;
+    letter-spacing: 2px;
+    margin-bottom: 24px;
+  }
 
-        <script>
-            if (top.location == self.location) {
-                document.write('<meta name="google" content="notranslate" />');
-            }
-        </script>
+  /* ── НИЖНЯЯ ПАНЕЛЬ ДЕЙСТВИЙ ──────────────────────────── */
+  .actions-bar {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
 
-        <meta name="robots" content="noyaca" />
-    </head>
-    <body class="body body__621336215 body__ru">
-        <script>
-            if (top.location != self.location) {
-                document.write('<div class="body-iframe">');
-            }
-        </script>
+  /* ── ОЖИДАНИЕ ─────────────────────────────────────────── */
+  .waiting-msg {
+    text-align: center;
+    padding: 40px 20px;
+  }
+  .waiting-msg .icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    animation: wave 3s ease-in-out infinite;
+    display: block;
+  }
+  .waiting-msg h3 {
+    font-family: 'Russo One', sans-serif;
+    font-size: 18px;
+    letter-spacing: 3px;
+    color: var(--gold);
+    margin-bottom: 8px;
+  }
+  .waiting-msg p {
+    font-size: 12px;
+    color: rgba(168,228,255,0.5);
+    letter-spacing: 1px;
+  }
 
-        <script>
-            if (!window.adblock) {
-                function matchLanguage(lang) {
-                    return location.host.indexOf(lang + ".") != -1
-                        || location.pathname.indexOf("/" + lang + "/") != -1;
-                }
+  /* ── ЛЕГЕНДА ─────────────────────────────────────────── */
+  .legend {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: rgba(168,228,255,0.5);
+    letter-spacing: 1px;
+  }
+  .legend-dot {
+    width: 12px; height: 12px;
+    border-radius: 2px;
+    border: 1px solid;
+  }
+  .legend-dot.ship   { background: rgba(39,174,96,0.4);  border-color: rgba(46,204,113,0.6); }
+  .legend-dot.hit    { background: rgba(255,68,68,0.5);   border-color: var(--hit); }
+  .legend-dot.miss   { background: rgba(58,123,213,0.2);  border-color: rgba(58,123,213,0.5); }
+  .legend-dot.sunk   { background: rgba(255,107,0,0.45);  border-color: var(--sunk); }
+  .legend-dot.water  { background: rgba(7,51,88,0.5);     border-color: rgba(10,73,117,0.6); }
 
-                document.write('<div class="body-sda"><div class="sda-block sda-block__google">');
+  /* ── ADMIN PANEL ─────────────────────────────────────── */
+  .admin-panel {
+    background: rgba(4,31,53,0.6);
+    border: 1px solid rgba(240,192,64,0.2);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+  }
+  .admin-panel summary {
+    cursor: pointer;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: rgba(240,192,64,0.6);
+    user-select: none;
+    outline: none;
+  }
+  .admin-panel summary:hover { color: var(--gold); }
+  .admin-inner {
+    margin-top: 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+  }
+  .admin-inner .field-group { margin-bottom: 0; flex: 1; min-width: 120px; }
 
-                if (matchLanguage("ru") || matchLanguage("be")) {
-                    document.write('<script async src="https://yandex.ru/ads/system/context.js" crossorigin="anonymous"></s' + 'cript><div class="sda-block-gap" id="sda-block-animated" style="display:inline-block;width:1000px;height:120px;"></div><script>window.yaContextCb = window.yaContextCb || []; window.yaContextCb.push(() => Ya.Context.AdvManager.render({"blockId":"R-A-13511183-3","renderTo":"sda-block-animated"}));</s' + 'cript>');
-                } else {
-                    document.write('<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7958472158675518" crossorigin="anonymous"></s' + 'cript><ins class="adsbygoogle" style="display:inline-block;width:900px;height:90px" data-ad-client="ca-pub-7958472158675518" data-ad-slot="1370478912"></ins><script>(adsbygoogle = window.adsbygoogle || []).push({});</s' + 'cript>');
-                }
+  /* ── ИНДИКАТОР POLLING ───────────────────────────────── */
+  .polling-dot {
+    position: fixed;
+    bottom: 16px; right: 16px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--foam);
+    opacity: 0.6;
+    transition: opacity 0.3s;
+  }
+  .polling-dot.active { animation: pulse-glow 0.5s ease; opacity: 1; }
 
-                document.write('</div></div>');
-            }
-        </script>
+  /* ── АДАПТИВНОСТЬ ─────────────────────────────────────── */
+  @media (max-width: 640px) {
+    :root { --cell-size: 28px; }
+    .login-card { padding: 24px 20px; }
+    .status-bar { padding: 10px 14px; }
+    .winner-card { padding: 32px 24px; }
+  }
+</style>
+</head>
+<body>
 
-        <div class="body-wrap">
-            <header class="header">
-                <h1 class="logo">Морской бой <span class="online_count">50 игроков онлайн</span></h1>
-                <div class="none">&#160;— онлайн-игра для двух соперников. Заходите, расставляйте корабли, дождитесь противника и начинайте играть вдвоем.</div>
-            </header>
-            <ul class="langs">
-                <li class="lang lang__be"><a class="lang-link" href="https://battleship-game.org/be/" hreflang="be" title="Belarusian">Беларуская</a></li><li class="lang lang__ca"><a class="lang-link" href="https://battleship-game.org/ca/" hreflang="ca" title="Catalan">Català</a></li><li class="lang lang__cs"><a class="lang-link" href="https://battleship-game.org/cs/" hreflang="cs" title="Czech">Čeština</a></li><li class="lang lang__da"><a class="lang-link" href="https://battleship-game.org/da/" hreflang="da" title="Danish">Dansk</a></li><li class="lang lang__de"><a class="lang-link" href="https://battleship-game.org/de/" hreflang="de" title="German">Deutsch</a></li><li class="lang lang__el"><a class="lang-link" href="https://battleship-game.org/el/" hreflang="el" title="Greek">Ελληνικά</a></li><li class="lang lang__en"><a class="lang-link" href="https://battleship-game.org/en/" hreflang="en" title="English">English</a></li><li class="lang lang__es"><a class="lang-link" href="https://battleship-game.org/es/" hreflang="es" title="Spanish">Español</a></li><li class="lang lang__fr"><a class="lang-link" href="https://battleship-game.org/fr/" hreflang="fr" title="French">Français</a></li><li class="lang lang__hu"><a class="lang-link" href="https://battleship-game.org/hu/" hreflang="hu" title="Hungarian">Magyar</a></li><li class="lang lang__hy"><a class="lang-link" href="https://battleship-game.org/hy/" hreflang="hy" title="Armenian">Հայերեն</a></li><li class="lang lang__it"><a class="lang-link" href="https://battleship-game.org/it/" hreflang="it" title="Italian">Italiano</a></li><li class="lang lang__ko"><a class="lang-link" href="https://battleship-game.org/ko/" hreflang="ko" title="Korean">한국어</a></li><li class="lang lang__lv"><a class="lang-link" href="https://battleship-game.org/lv/" hreflang="lv" title="Latvian">Latviešu</a></li><li class="lang lang__nl"><a class="lang-link" href="https://battleship-game.org/nl/" hreflang="nl" title="Dutch">Nederlands</a></li><li class="lang lang__ja"><a class="lang-link" href="https://battleship-game.org/ja/" hreflang="ja" title="Japanese">日本語</a></li><li class="lang lang__pl"><a class="lang-link" href="https://battleship-game.org/pl/" hreflang="pl" title="Polish">Polski</a></li><li class="lang lang__pt"><a class="lang-link" href="https://battleship-game.org/pt/" hreflang="pt" title="Portuguese">Português</a></li><li class="lang lang__ru lang__selected"><a class="lang-link" href="https://battleship-game.org/ru/" hreflang="ru" title="Russian">Русский</a></li><li class="lang lang__sr"><a class="lang-link" href="https://battleship-game.org/sr/" hreflang="sr" title="Serbian">Српски</a></li><li class="lang lang__fi"><a class="lang-link" href="https://battleship-game.org/fi/" hreflang="fi" title="Finnish">Suomi</a></li><li class="lang lang__sv"><a class="lang-link" href="https://battleship-game.org/sv/" hreflang="sv" title="Swedish">Svenska</a></li><li class="lang lang__tr"><a class="lang-link" href="https://battleship-game.org/tr/" hreflang="tr" title="Turkish">Türkçe</a></li><li class="lang lang__uk"><a class="lang-link" href="https://battleship-game.org/uk/" hreflang="uk" title="Ukrainian">Українська</a></li><li class="lang lang__zh"><a class="lang-link" href="https://battleship-game.org/zh/" hreflang="zh" title="Chinese">中文</a></li>
-            </ul>
-            <div class="notifications-wrap">
-                <div class="notifications">
-                    <div class="notification notification__init">
-                        <div class="notification-message">Разместите корабли.</div>
-                    </div>
-                    <div class="notification notification__connect-to-server none">
-                        <div class="notification-message">Подключаемся к серверу.</div>
-                    </div>
-                    <div class="notification notification__waiting-for-rival none">
-                        <div class="notification-message">Ожидаем противника.</div>
-                    </div>
-                    <div class="notification notification__game-started-move-on none">
-                        <div class="notification-message">Игра началась, ваш ход.</div>
-                    </div>
-                    <div class="notification notification__game-started-move-off none">
-                        <div class="notification-message">Игра началась, противник ходит.</div>
-                    </div>
-                    <div class="notification notification__move-on none">
-                        <div class="notification-message">Ваш ход.</div>
-                    </div>
-                    <div class="notification notification__move-off none">
-                        <div class="notification-message">Противник ходит, ждите.</div>
-                    </div>
-                    <div class="notification notification__rival-leave none">
-                        <div class="notification-message">Противник покинул игру. Дальнейшая игра невозможна.</div>
-                        <input class="notification-submit restart" type="submit" value="Начать новую игру" />
-                    </div>
-                    <div class="notification notification__game-over-win none">
-                        <div class="notification-message">Игра закончена. Поздравляем, вы победили!</div>
-                        <input class="notification-submit restart" type="submit" value="Сыграть еще разок" />
-                    </div>
-                    <div class="notification notification__game-over-lose none">
-                        <div class="notification-message">Игра закончена. Вы проиграли.</div>
-                        <input class="notification-submit restart" type="submit" value="Отыграться" />
-                    </div>
-                    <div class="notification notification__server-error none">
-                        <div class="notification-message">Сервер недоступен.</div>
-                    </div>
-                    <div class="notification notification__game-error none">
-                        <div class="notification-message">Непредвиденная ошибка. Дальнейшая игра невозможна.</div>
-                        <input class="notification-submit restart" type="submit" value="Начать новую игру" />
-                    </div>
-                    <div class="notification notification__cws none">
-                        <div class="notification-message">Если вам понравилась игра, пожалуйста, оставьте отзыв о ней в интернет-магазине Google Chrome (это займет не более минуты).</div>
-                        <input class="notification-submit notification-submit__accept" type="submit" data-target="http://chrome.google.com/webstore/detail/battleship/hjgmfhnanfbghmpcbdfgpigcgdbaggfm?hl=ru" value="Оставить отзыв" />
-                        <input class="notification-submit notification-submit__cancel" type="submit" value="Не сейчас" />
-                    </div>
-                </div>
-            </div>
-            <div class="battlefields clearfix">
-                <div class="battlefield battlefield__self">
-                    <div class="battlefield-gap">
-                        <div class="battlefield-table-placeholder"></div>
-                        <div class="battlefield-label">Ваше поле</div>
-                        <ul class="placeships">
-                            <li class="placeships-variant placeships-variant__randomly">
-                                <span class="placeships-variant-link">Случайным образом</span>
-                            </li>
-                            <li class="placeships-variant placeships-variant__hands">
-                                <span class="placeships-variant-link">С чистого листа</span>
-                            </li>
-                            <li class="placeships-variant placeships-variant__archive none">
-                                <span class="placeships-variant-link">Архив</span>
-                            </li>
-                        </ul>
-                        <div class="port none">
-                            <div class="port-instruction">Перетащите на поле и кликните, чтобы повернуть:</div>
-                            <div class="port-lines"></div>
-                        </div>
-                    </div>
-                    <div class="battlefield-stat none"></div>
-                </div>
-                <div class="battlefield battlefield__rival battlefield__wait">
-                    <div class="battlefield-gap">
-                        <div class="battlefield-table-placeholder"></div>
-                        <div class="battlefield-label">Поле противника<div class="battlefield-label-comment">(другой игрок)</div></div>
-                        <div class="battlefield-start none">
-                            <div class="battlefield-start-gap">
-                                <div class="battlefield-start-choose_rival">
-                                    <h2 class="battlefield-start-choose_rival-label">Противник</h2>
-                                    <ul class="battlefield-start-choose_rival-variants">
-                                        <li class="battlefield-start-choose_rival-variant">
-                                            <a class="battlefield-start-choose_rival-variant-link">случайный</a>
-                                        </li>
-                                        <li class="battlefield-start-choose_rival-variant">
-                                            <a class="battlefield-start-choose_rival-variant-link battlefield-start-choose_rival-variant-link__connect">знакомый</a>
-                                            <div class="battlefield-start-ships_types-gap none">
-                                                <h3 class="battlefield-start-ships_types-label">Тип флота</h3>
-                                                <ul class="battlefield-start-ships_types">
-                                                    <li class="battlefield-start-ships_type battlefield-start-ships_type__default">
-                                                        <a class="battlefield-start-ships_type-link">русский</a>
-                                                    </li>
-                                                    <li class="battlefield-start-ships_type battlefield-start-ships_type__classic">
-                                                        <a class="battlefield-start-ships_type-link">классический</a>
-                                                    </li>
-                                                </ul>
-                                            </div>
-                                            <div class="battlefield-start-choose_rival-variant-url">
-                                                <div class="battlefield-start-choose_rival-variant-url-label">Скопируйте и отправьте ему ссылку:</div>
-                                                <input class="battlefield-start-choose_rival-variant-url-input" type="text" readonly="readonly" />
-                                            </div>
-                                        </li>
-                                    </ul>
-                                </div>
-                                <div class="battlefield-start-button">Играть</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="battlefield-stat none"></div>
-                </div>
-            </div>
-            <div class="dock none">
-                <div class="dock-label">Успешные комбинации:</div>
-                <div class="dock-sets clearfix"></div>
-                <span class="dock-closer">×</span>
-            </div>
-            <div class="chat-gap none">
-                <div class="chat">
-                    <input type="text" class="input input__textarea chat-teletype" placeholder="Написать противнику" />
-                    <div class="chat-states">
-                        <div class="chat-state chat-state__typing chat-state__invisible">Противник печатает...</div>
-                    </div>
-                    <ul class="chat-messages">
-                        <li class="chat-message chat-message__holder none"></li>
-                    </ul>
-                </div>
-            </div>
-            <dl class="settings clearfix">
-                <dt class="settings-label">Настройки:</dt>
-                <dd class="setting setting__shoothint" data-name="shoothint">
-                    <input class="setting-input" type="checkbox" id="setting__shoothint" value="1" checked="checked" />
-                    <label class="setting-label" for="setting__shoothint">Отмечать «холостые клетки»</label>
-                </dd>
-                <dd class="setting setting__compactchat" data-name="compactchat">
-                    <input class="setting-input" type="checkbox" id="setting__compactchat" value="1" />
-                    <label class="setting-label" for="setting__compactchat">Компактный чат</label>
-                </dd>
-                <dd class="setting setting__notifications none" data-name="notifications" data-title-blocked="Уведомления для этого сайта заблокированы в настройках вашего браузера">
-                    <input class="setting-input" type="checkbox" id="setting__notifications" value="1" />
-                    <label class="setting-label" for="setting__notifications">Включить уведомления</label>
-                </dd>
-                <dd class="setting setting__opplang none" data-name="opplang">
-                    <input class="setting-input" type="checkbox" id="setting__opplang" value="1" />
-                    <label class="setting-label" for="setting__opplang">Select opponent with same language</label>
-                </dd>
-                <dd class="setting setting__sound none" data-name="sound">
-                    <input class="setting-input" type="checkbox" id="setting__sound" value="1" />
-                    <label class="setting-label" for="setting__sound">Включить звук</label>
-                </dd>
-            </dl>
-            <div class="sounds none">
-                <audio class="sound sound__game_started" preload="auto">
-                    <source src="/static/sound/game_started.ogg" />
-                    <source src="/static/sound/game_started.mp3" />
-                </audio>
-                <audio class="sound sound__shoot_missed" preload="auto">
-                    <source src="/static/sound/missed.ogg" />
-                    <source src="/static/sound/missed.mp3" />
-                </audio>
-                <audio class="sound sound__shoot_wounded" preload="auto">
-                    <source src="/static/sound/wounded.ogg" />
-                    <source src="/static/sound/wounded.mp3" />
-                </audio>
-                <audio class="sound sound__shoot_killed" preload="auto">
-                    <source src="/static/sound/killed.ogg" />
-                    <source src="/static/sound/killed.mp3" />
-                </audio>
-                <audio class="sound sound__chat" preload="auto">
-                    <source src="/static/sound/chat.ogg" />
-                    <source src="/static/sound/chat.mp3" />
-                </audio>
-                <audio class="sound sound__click" preload="auto">
-                    <source src="/static/sound/click.ogg" />
-                    <source src="/static/sound/click.mp3" />
-                </audio>
-                <audio class="sound sound__win" preload="auto">
-                    <source src="/static/sound/win.ogg" />
-                    <source src="/static/sound/win.mp3" />
-                </audio>
-                <audio class="sound sound__lose" preload="auto">
-                    <source src="/static/sound/lose.ogg" />
-                    <source src="/static/sound/lose.mp3" />
-                </audio>
-            </div>
-            <div class="leave none" data-confirm="Данные игры будут потеряны!"><a href="./" rel="nofollow" class="leave-link">Выйти из игры</a></div>
-            <footer class="footer">
-                <div class="copyright clearfix">
-                    <span style="float: left">© 2013&#8212;2020 battleship-game.org</span>
-                    <span class="copyright-links">
-                        <a class="copyright-link copyright-link__chrome none" href="https://chrome.google.com/webstore/detail/battleship/hjgmfhnanfbghmpcbdfgpigcgdbaggfm?hl=ru" target="_blank"><img loading="lazy" decoding="async" style="vertical-align: bottom; margin-right: 2px; border: none" src="/static/i/chrome_web_store-32.png" width="16" height="16" alt="Chrome" />Добавить в Chrome</a>
-                        <span> </span>
-                        <a class="copyright-link copyright-link__rules" href="http://ru.wikipedia.org/wiki/%D0%9C%D0%BE%D1%80%D1%81%D0%BA%D0%BE%D0%B9_%D0%B1%D0%BE%D0%B9_(%D0%B8%D0%B3%D1%80%D0%B0)" target="_blank" rel="help">Правила игры</a>
-                        <span> </span>
-                        <a target="_blank" class="copyright-link copyright-link__tournament" href="http://challonge.com">Создать турнир (англ.)</a>
-                        <span> </span>
-                        <a class="copyright-link" href="mailto:info@battleship-game.org">Сообщить о проблеме</a>
-                    </span>
-                </div>
-            </footer>
+<!-- ШАПКА -->
+<header>
+  <div class="logo">МОРСКОЙ <span>БОЙ</span></div>
+  <div class="subtitle">NAVAL COMBAT • 2 ИГРОКА</div>
+</header>
+
+<div class="app">
+
+  <!-- ── ЭКРАН ВХОДА ──────────────────────────────────── -->
+  <div id="loginScreen">
+    <div class="login-card">
+      <h2>⚓ ВХОД В ИГРУ</h2>
+
+      <div class="field-group">
+        <label>НИКНЕЙМ</label>
+        <input type="text" id="inNickname" placeholder="Введите никнейм" maxlength="20">
+      </div>
+
+      <button class="btn btn-primary" onclick="joinGame()">
+        🚢 ВОЙТИ В ИГРУ
+      </button>
+
+      <div id="loginMsg"></div>
+
+      <div class="divider"><span>ПРИНУДИТЕЛЬНЫЙ ВХОД</span></div>
+
+      <div class="field-group">
+        <label>ПАРОЛЬ АДМИНИСТРАТОРА</label>
+        <input type="password" id="inPassword" placeholder="Пароль для кика игрока">
+      </div>
+      <div class="field-group">
+        <label>КИКНУТЬ СЛОТ</label>
+        <select id="inKickSlot" style="background:rgba(2,13,24,0.8);border:1px solid rgba(26,159,212,0.3);border-radius:6px;color:#e8f4ff;font-family:'Share Tech Mono',monospace;font-size:14px;padding:10px 14px;width:100%;outline:none;">
+          <option value="1">Слот 1 (первый игрок)</option>
+          <option value="2">Слот 2 (второй игрок)</option>
+        </select>
+      </div>
+
+      <button class="btn btn-danger" onclick="forceJoin()">
+        ⚡ ПРИНУДИТЕЛЬНЫЙ ВХОД
+      </button>
+    </div>
+  </div>
+
+  <!-- ── ИГРОВОЙ ЭКРАН ────────────────────────────────── -->
+  <div id="gameScreen">
+
+    <!-- Статус-бар -->
+    <div class="status-bar">
+      <div class="status-item">
+        <div class="status-label">ВЫ</div>
+        <div class="status-value" id="statusMe">—</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">ПРОТИВНИК</div>
+        <div class="status-value" id="statusEnemy">Ожидание...</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">ФАЗ</div>
+        <div class="status-phase">
+          <div class="phase-dot waiting" id="phaseDot"></div>
+          <div class="status-value" id="statusPhase">Ожидание</div>
+        </div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">ХОД</div>
+        <div class="status-value" id="statusTurn">—</div>
+      </div>
+    </div>
+
+    <!-- Ожидание второго игрока -->
+    <div id="waitingBlock" class="waiting-msg">
+      <span class="icon">⚓</span>
+      <h3>ОЖИДАНИЕ ПРОТИВНИКА</h3>
+      <p>Поделитесь ссылкой на эту страницу со вторым игроком</p>
+    </div>
+
+    <!-- Игровые поля -->
+    <div id="boardsBlock" style="display:none;">
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot ship"></div>Ваш корабль</div>
+        <div class="legend-item"><div class="legend-dot hit"></div>Попадание</div>
+        <div class="legend-item"><div class="legend-dot sunk"></div>Потоплен</div>
+        <div class="legend-item"><div class="legend-dot miss"></div>Промах</div>
+        <div class="legend-item"><div class="legend-dot water"></div>Вода</div>
+      </div>
+
+      <div class="boards-container">
+        <!-- Моё поле -->
+        <div class="board-panel">
+          <div class="board-title">⚓ МОЁ ПОЛЕ</div>
+          <div class="grid-labels-row" id="myLabelsRow"></div>
+          <div class="grid-wrapper">
+            <div class="grid-labels-col" id="myLabelsCol"></div>
+            <div class="grid" id="myGrid"></div>
+          </div>
         </div>
 
-        <!-- sda -->
-        <script>
-            (function () {
-                function matchLanguage(lang) {
-                    return location.host.indexOf(lang + ".") != -1
-                        || location.pathname.indexOf("/" + lang + "/") != -1;
-                }
+        <!-- Поле противника -->
+        <div class="board-panel">
+          <div class="board-title enemy">🎯 ПОЛЕ ПРОТИВНИКА</div>
+          <div class="grid-labels-row" id="enemyLabelsRow"></div>
+          <div class="grid-wrapper">
+            <div class="grid-labels-col" id="enemyLabelsCol"></div>
+            <div class="grid" id="enemyGrid"></div>
+          </div>
+        </div>
+      </div>
 
-                var sdaLocalLangsMap = {
-                    "da": "Kvadrater",
-                    "de": "Käsekästchen",
-                    "en": "Dots and Boxes",
-                    "es": "Timbiriche",
-                    "fr": "La Pipopipette",
-                    "it": "Punti e linee",
-                    "nl": "Kamertje verhuren",
-                    "pl": "Szewc",
-                    "ru": "Точки и палочки",
-                    "sl": "Točke in kvadrati",
-                    "fi": "Pisteitä ja laatikot",
-                    "uk": "Палички",
-                    "zh": "點格棋"
-                };
+      <!-- Журнал ходов -->
+      <div class="log-panel">
+        <h3>📋 ЖУРНАЛ ХОДОВ</h3>
+        <ul class="log-list" id="logList"></ul>
+      </div>
+    </div>
 
-                function getSdaYandex() {
-                    return '<div class="sda-block sda-block__local sda-block__yandex"><script async src="https://yandex.ru/ads/system/context.js" crossorigin="anonymous"></s' + 'cript><div class="sda-block-gap" id="sda-block" style="display:inline-block;width:900px;height:90px;"></div></div><script>window.yaContextCb = window.yaContextCb || []; window.yaContextCb.push(() => Ya.Context.AdvManager.render({"blockId":"R-A-13511183-2","renderTo":"sda-block"}));</s' + 'cript>';
-                }
+    <!-- Кнопки действий -->
+    <div class="actions-bar">
+      <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
+    </div>
 
-                function getSdaGoogle() {
-                    return '<div class="sda-block sda-block__google"><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7958472158675518" crossorigin="anonymous"></s' + 'cript><ins class="adsbygoogle" style="display:inline-block;width:900px;height:90px" data-ad-client="ca-pub-7958472158675518" data-ad-slot="6008298741"></ins><script>(adsbygoogle = window.adsbygoogle || []).push({});</' + 'script></div>';
-                }
+    <!-- Админ-панель -->
+    <details class="admin-panel">
+      <summary>⚙ АДМИНИСТРИРОВАНИЕ</summary>
+      <div class="admin-inner">
+        <div class="field-group">
+          <label>ПАРОЛЬ АДМИНИСТРАТОРА</label>
+          <input type="password" id="adminPassword" placeholder="Пароль">
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="restartGame()">
+          🔄 Перезапустить игру
+        </button>
+      </div>
+    </details>
 
-                function getSdaLocal() {
-                    return '<div class="sda-block sda-block__local"><div class="sda-block-gap" id="sda-block"></div></div>';
-                }
+  </div><!-- /gameScreen -->
 
-                var sdaBlock = getSdaGoogle();
-                var sdaBlockYandex = getSdaYandex();
+</div><!-- /app -->
 
-                if (window.adblock) {
-                    sdaBlock = getSdaLocal();
-                }
+<!-- Оверлей победителя -->
+<div class="winner-overlay" id="winnerOverlay">
+  <div class="winner-card">
+    <div class="crown">🏆</div>
+    <h2 id="winnerName">ПОБЕДИТЕЛЬ</h2>
+    <p id="winnerMsg">одержал победу в морском бою</p>
+    <button class="btn btn-primary" onclick="closeWinner()">Продолжить</button>
+  </div>
+</div>
 
-                if (matchLanguage("ru") || matchLanguage("be")) {
-                    // sdaBlock = getSdaYandex();
-                }
+<!-- Индикатор polling -->
+<div class="polling-dot" id="pollingDot"></div>
 
-                try {
-                    if (top.location == self.location) {
-                        document.write('<div id="sda-yandex" style="display: none">' + sdaBlockYandex + '</div>');
-                        document.write('<div class="sda sda__vh" id="sda">' + sdaBlock + '</div>');
-                    }
-                } catch (exception) {}
+<script>
+// ============================================================
+// МОРСКОЙ БОЙ — Клиентская логика
+// ============================================================
 
-                setTimeout(() => {
-                    var isAdsenseNotLoaded = (typeof adsbygoogle === 'undefined' || typeof adsbygoogle.loaded === 'undefined');
+// ── КОНФИГУРАЦИЯ ─────────────────────────────────────────────
+// ⚠️ ЗАМЕНИТЕ НА ВАШ URL после деплоя Apps Script
+var API_URL = "https://script.google.com/macros/s/AKfycbweyXePM7ZS41976UggUGAx6NeAadlqq5ykumIDJ_Rnb1XHoxf53etBDaLJROM7JDC-CA/exec";
 
-                    if (isAdsenseNotLoaded) {
-                        if (window.yaCounter20587900) {
-                            window.yaCounter20587900.reachGoal("adsNotLoaded");
-                        }
+var POLL_INTERVAL = 200; // мс между запросами состояния
 
-                        if (matchLanguage("ru") || matchLanguage("be")) {
-                            document.getElementById('sda').innerHTML = '';
-                            document.getElementById('sda-yandex').style = '';
-                        }
-                    }
-                }, 4000);
-            })();
-        </script>
-        <!-- //sda -->
+// ── СОСТОЯНИЕ ПРИЛОЖЕНИЯ ─────────────────────────────────────
+var state = {
+  playerId:    null,
+  mySlot:      null,
+  nickname:    null,
+  myBoard:     null,  // 10x10 массив кораблей
+  gameState:   null,  // последнее состояние с сервера
+  pollTimer:   null,
+  log:         [],    // локальный журнал ходов
+  winnerShown: false
+};
 
-        <script>
-            if (top.location != self.location) {
-                document.write('</div>');
-            }
-        </script>
+// ── ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ──────────────────────────────────
 
-        <script>
-            (function(b,c,a){(c[a]=c[a]||[]).push(function(){try{c.yaCounter20587900=new Ya.Metrika({id:20587900,clickmap:!0,trackLinks:!0,accurateTrackBounce:!0})}catch(a){}});var e=b.getElementsByTagName("script")[0],d=b.createElement("script");a=function(){e.parentNode.insertBefore(d,e)};d.async=!0;d.src="https://mc.yandex.ru/metrika/watch.js";"[object Opera]"==c.opera?b.addEventListener("DOMContentLoaded",a,!1):a()})(document,window,"yandex_metrika_callbacks");
-        </script>
-    </body>
+// Буквы для столбцов (А-К)
+var COL_LABELS = ["А","Б","В","Г","Д","Е","Ж","З","И","К"];
+var ROW_LABELS = ["1","2","3","4","5","6","7","8","9","10"];
+
+// Запрос к API
+async function apiPost(data) {
+  var resp = await fetch(API_URL, {
+    method: "POST",
+    body:   JSON.stringify(data),
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    redirect: "follow"
+  });
+  return resp.json();
+}
+
+async function apiGet(params) {
+  var url = API_URL + "?action=state";
+  if (params.playerId) url += "&playerId=" + encodeURIComponent(params.playerId);
+  var resp = await fetch(url, { redirect: "follow" });
+  return resp.json();
+}
+
+// Показать сообщение на экране входа
+function showLoginMsg(text, type) {
+  var el = document.getElementById("loginMsg");
+  el.innerHTML = '<div class="message message-' + type + '">' + text + '</div>';
+}
+
+// Сохранить сессию в localStorage
+function saveSession() {
+  localStorage.setItem("mb_playerId",  state.playerId);
+  localStorage.setItem("mb_nickname",  state.nickname);
+  localStorage.setItem("mb_mySlot",    state.mySlot);
+}
+
+// Загрузить сессию из localStorage
+function loadSession() {
+  state.playerId = localStorage.getItem("mb_playerId");
+  state.nickname = localStorage.getItem("mb_nickname");
+  state.mySlot   = parseInt(localStorage.getItem("mb_mySlot")) || null;
+  return !!(state.playerId && state.nickname);
+}
+
+// Очистить сессию
+function clearSession() {
+  localStorage.removeItem("mb_playerId");
+  localStorage.removeItem("mb_nickname");
+  localStorage.removeItem("mb_mySlot");
+  state.playerId = null;
+  state.nickname = null;
+  state.mySlot   = null;
+  state.myBoard  = null;
+}
+
+// ── ВХОД В ИГРУ ───────────────────────────────────────────────
+async function joinGame() {
+  var nickname = document.getElementById("inNickname").value.trim();
+  if (!nickname) { showLoginMsg("Введите никнейм", "error"); return; }
+
+  showLoginMsg("Подключение...", "info");
+  try {
+    var res = await apiPost({ action: "join", nickname: nickname });
+    if (!res.ok) { showLoginMsg(res.error, "error"); return; }
+    state.playerId = res.playerId;
+    state.mySlot   = res.slot;
+    state.nickname = nickname;
+    saveSession();
+    enterGameScreen();
+  } catch(e) {
+    showLoginMsg("Ошибка подключения. Проверьте URL API.", "error");
+    console.error(e);
+  }
+}
+
+// ── ПРИНУДИТЕЛЬНЫЙ ВХОД ───────────────────────────────────────
+async function forceJoin() {
+  var nickname = document.getElementById("inNickname").value.trim();
+  var password = document.getElementById("inPassword").value.trim();
+  var kickSlot = parseInt(document.getElementById("inKickSlot").value);
+
+  if (!nickname) { showLoginMsg("Введите никнейм", "error"); return; }
+  if (!password) { showLoginMsg("Введите пароль", "error"); return; }
+
+  showLoginMsg("Подключение...", "info");
+  try {
+    var res = await apiPost({
+      action:   "forceJoin",
+      nickname: nickname,
+      password: password,
+      kickSlot: kickSlot
+    });
+    if (!res.ok) { showLoginMsg(res.error, "error"); return; }
+    state.playerId = res.playerId;
+    state.mySlot   = res.slot;
+    state.nickname = nickname;
+    saveSession();
+    showLoginMsg("Игрок \"" + res.kicked + "\" выбит. Вы заняли его место.", "success");
+    setTimeout(enterGameScreen, 800);
+  } catch(e) {
+    showLoginMsg("Ошибка подключения", "error");
+    console.error(e);
+  }
+}
+
+// ── ПЕРЕХОД В ИГРОВОЙ ЭКРАН ───────────────────────────────────
+function enterGameScreen() {
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("gameScreen").style.display  = "block";
+  buildGridLabels();
+  buildGrids();
+  startPolling();
+}
+
+// ── ПОСТРОЕНИЕ МЕТОК СЕТКИ ────────────────────────────────────
+function buildGridLabels() {
+  // Метки столбцов (буквы)
+  ["myLabelsRow","enemyLabelsRow"].forEach(function(id) {
+    var el = document.getElementById(id);
+    el.innerHTML = "";
+    COL_LABELS.forEach(function(l) {
+      var d = document.createElement("div");
+      d.className = "grid-label";
+      d.textContent = l;
+      el.appendChild(d);
+    });
+  });
+
+  // Метки строк (цифры)
+  ["myLabelsCol","enemyLabelsCol"].forEach(function(id) {
+    var el = document.getElementById(id);
+    el.innerHTML = "";
+    ROW_LABELS.forEach(function(l) {
+      var d = document.createElement("div");
+      d.className = "grid-label-side";
+      d.textContent = l;
+      el.appendChild(d);
+    });
+  });
+}
+
+// ── ПОСТРОЕНИЕ СЕТОК ──────────────────────────────────────────
+function buildGrids() {
+  buildGrid("myGrid",    false);
+  buildGrid("enemyGrid", true);
+}
+
+function buildGrid(gridId, isEnemy) {
+  var el = document.getElementById(gridId);
+  el.innerHTML = "";
+  for (var r = 0; r < 10; r++) {
+    for (var c = 0; c < 10; c++) {
+      var cell = document.createElement("div");
+      cell.className = "cell" + (isEnemy ? " enemy-cell" : "");
+      cell.dataset.x = c;
+      cell.dataset.y = r;
+      if (isEnemy) {
+        (function(cx, cy) {
+          cell.addEventListener("click", function() { shoot(cx, cy); });
+        })(c, r);
+      }
+      el.appendChild(cell);
+    }
+  }
+}
+
+// ── ВЫСТРЕЛ ───────────────────────────────────────────────────
+async function shoot(x, y) {
+  var gs = state.gameState;
+  if (!gs || gs.phase !== "playing") return;
+  if (gs.turn !== state.playerId)    return;  // не мой ход
+
+  // Получаем выстрелы уже сделанные мной
+  var myShots = state.mySlot === 1 ? gs.shotsP1 : gs.shotsP2;
+  for (var i = 0; i < myShots.length; i++) {
+    if (myShots[i].x === x && myShots[i].y === y) return; // уже стреляли
+  }
+
+  // Блокируем поле на время запроса
+  setEnemyGridShootable(false);
+
+  try {
+    var res = await apiPost({
+      action:   "move",
+      playerId: state.playerId,
+      x:        x,
+      y:        y
+    });
+    if (!res.ok) {
+      addLog("Ошибка: " + res.error, "miss");
+    } else {
+      if (res.gameOver) {
+        fetchState(); // обновим сразу
+      }
+    }
+  } catch(e) {
+    console.error("Ошибка выстрела:", e);
+  }
+
+  // polling обновит состояние
+}
+
+// ── POLLING СОСТОЯНИЯ ─────────────────────────────────────────
+function startPolling() {
+  fetchState();
+  state.pollTimer = setInterval(fetchState, POLL_INTERVAL);
+}
+
+function stopPolling() {
+  if (state.pollTimer) {
+    clearInterval(state.pollTimer);
+    state.pollTimer = null;
+  }
+}
+
+async function fetchState() {
+  var dot = document.getElementById("pollingDot");
+  dot.classList.add("active");
+
+  try {
+    var gs = await apiGet({ playerId: state.playerId });
+    dot.classList.remove("active");
+    if (!gs.ok) return;
+    processGameState(gs);
+  } catch(e) {
+    dot.classList.remove("active");
+    console.error("Polling ошибка:", e);
+  }
+}
+
+// ── ОБРАБОТКА СОСТОЯНИЯ ───────────────────────────────────────
+function processGameState(gs) {
+  var prevState = state.gameState;
+  state.gameState = gs;
+
+  // Обновляем своё поле кораблей
+  if (gs.myBoard) state.myBoard = gs.myBoard;
+
+  updateStatusBar(gs);
+
+  if (gs.phase === "waiting") {
+    document.getElementById("waitingBlock").style.display = "block";
+    document.getElementById("boardsBlock").style.display  = "none";
+    return;
+  }
+
+  document.getElementById("waitingBlock").style.display = "none";
+  document.getElementById("boardsBlock").style.display  = "block";
+
+  renderMyBoard(gs);
+  renderEnemyBoard(gs);
+
+  // Управление кликабельностью поля противника
+  var isMyTurn = (gs.phase === "playing" && gs.turn === state.playerId);
+  setEnemyGridShootable(isMyTurn);
+
+  // Определяем новые выстрелы для журнала
+  updateLog(gs, prevState);
+
+  // Победитель
+  if (gs.phase === "finished" && gs.winner && !state.winnerShown) {
+    state.winnerShown = true;
+    stopPolling();
+    showWinner(gs);
+  }
+}
+
+// ── ОБНОВЛЕНИЕ СТАТУС-БАРА ────────────────────────────────────
+function updateStatusBar(gs) {
+  var me = gs.players ? gs.players.filter(function(p){ return p.playerId === state.playerId; })[0] : null;
+  var enemy = gs.players ? gs.players.filter(function(p){ return p.playerId !== state.playerId; })[0] : null;
+
+  document.getElementById("statusMe").textContent    = state.nickname || "—";
+  document.getElementById("statusEnemy").textContent = enemy ? enemy.nickname : "Ожидание...";
+
+  // Фаза
+  var phaseMap = { waiting: "Ожидание", playing: "Игра идёт", finished: "Игра окончена" };
+  var dot = document.getElementById("phaseDot");
+  dot.className = "phase-dot " + (gs.phase || "waiting");
+  document.getElementById("statusPhase").textContent = phaseMap[gs.phase] || gs.phase;
+
+  // Чей ход
+  var turnPlayer = gs.players ? gs.players.filter(function(p){ return p.playerId === gs.turn; })[0] : null;
+  var turnEl = document.getElementById("statusTurn");
+  if (!turnPlayer) {
+    turnEl.textContent = "—";
+    turnEl.classList.remove("active");
+  } else {
+    turnEl.textContent = turnPlayer.nickname;
+    if (gs.turn === state.playerId) {
+      turnEl.textContent += " (ВАШ ХОД)";
+      turnEl.classList.add("active");
+    } else {
+      turnEl.classList.remove("active");
+    }
+  }
+}
+
+// ── РЕНДЕР СВОЕГО ПОЛЯ ────────────────────────────────────────
+function renderMyBoard(gs) {
+  var board = state.myBoard;
+  if (!board) return;
+
+  // Выстрелы противника по мне
+  var enemyShots = state.mySlot === 1 ? gs.shotsP2 : gs.shotsP1;
+  var shotMap = {};
+  if (enemyShots) {
+    enemyShots.forEach(function(s) {
+      shotMap[s.y + "_" + s.x] = s.result;
+    });
+  }
+
+  var cells = document.querySelectorAll("#myGrid .cell");
+  cells.forEach(function(cell) {
+    var x = parseInt(cell.dataset.x);
+    var y = parseInt(cell.dataset.y);
+    var key = y + "_" + x;
+    var cellVal = board[y][x];
+    var shot = shotMap[key];
+
+    cell.className = "cell";
+    if (shot === "sunk")      cell.classList.add("my-sunk");
+    else if (shot === "hit")  cell.classList.add("my-hit");
+    else if (shot === "miss") cell.classList.add("miss");
+    else if (cellVal === 1 || cellVal === 2) cell.classList.add("ship");
+  });
+}
+
+// ── РЕНДЕР ПОЛЯ ПРОТИВНИКА ────────────────────────────────────
+function renderEnemyBoard(gs) {
+  // Мои выстрелы по противнику
+  var myShots = state.mySlot === 1 ? gs.shotsP1 : gs.shotsP2;
+  var shotMap = {};
+  if (myShots) {
+    myShots.forEach(function(s) {
+      shotMap[s.y + "_" + s.x] = s.result;
+    });
+  }
+
+  var cells = document.querySelectorAll("#enemyGrid .cell");
+  cells.forEach(function(cell) {
+    var x = parseInt(cell.dataset.x);
+    var y = parseInt(cell.dataset.y);
+    var key = y + "_" + x;
+    var shot = shotMap[key];
+
+    cell.className = "cell enemy-cell";
+    if (shot === "sunk")      cell.classList.add("sunk");
+    else if (shot === "hit")  cell.classList.add("hit");
+    else if (shot === "miss") cell.classList.add("miss");
+  });
+}
+
+// ── КЛИКАБЕЛЬНОСТЬ ПОЛЯ ПРОТИВНИКА ───────────────────────────
+function setEnemyGridShootable(enabled) {
+  var cells = document.querySelectorAll("#enemyGrid .cell");
+  cells.forEach(function(cell) {
+    if (enabled && !cell.classList.contains("hit") &&
+        !cell.classList.contains("miss") &&
+        !cell.classList.contains("sunk")) {
+      cell.classList.add("shootable");
+    } else {
+      cell.classList.remove("shootable");
+    }
+  });
+}
+
+// ── ЖУРНАЛ ХОДОВ ─────────────────────────────────────────────
+function updateLog(gs, prevState) {
+  var myShots    = state.mySlot === 1 ? gs.shotsP1    : gs.shotsP2;
+  var enemyShots = state.mySlot === 1 ? gs.shotsP2    : gs.shotsP1;
+  var prevMy     = prevState ? (state.mySlot === 1 ? prevState.shotsP1 : prevState.shotsP2) : [];
+  var prevEnemy  = prevState ? (state.mySlot === 1 ? prevState.shotsP2 : prevState.shotsP1) : [];
+
+  // Новые мои выстрелы
+  if (myShots && myShots.length > (prevMy ? prevMy.length : 0)) {
+    for (var i = (prevMy ? prevMy.length : 0); i < myShots.length; i++) {
+      var s = myShots[i];
+      var resText = s.result === "hit" ? "Попадание" : s.result === "sunk" ? "Потоплен" : "Промах";
+      addLog("Вы → " + COL_LABELS[s.x] + ROW_LABELS[s.y] + ": " + resText, s.result);
+    }
+  }
+
+  // Новые выстрелы противника
+  var enemy = gs.players ? gs.players.filter(function(p){ return p.playerId !== state.playerId; })[0] : null;
+  var enemyName = enemy ? enemy.nickname : "Противник";
+  if (enemyShots && enemyShots.length > (prevEnemy ? prevEnemy.length : 0)) {
+    for (var j = (prevEnemy ? prevEnemy.length : 0); j < enemyShots.length; j++) {
+      var es = enemyShots[j];
+      var eText = es.result === "hit" ? "Попадание!" : es.result === "sunk" ? "Потопил!" : "Промах";
+      addLog(enemyName + " → " + COL_LABELS[es.x] + ROW_LABELS[es.y] + ": " + eText, es.result);
+    }
+  }
+}
+
+function addLog(text, type) {
+  var list = document.getElementById("logList");
+  var li   = document.createElement("li");
+  var now  = new Date();
+  var ts   = pad(now.getHours()) + ":" + pad(now.getMinutes()) + ":" + pad(now.getSeconds());
+  li.className = "log-entry " + (type || "miss");
+  li.innerHTML = '<span class="ts">' + ts + '</span>' + text;
+  list.insertBefore(li, list.firstChild);
+  // Ограничиваем журнал 50 записями
+  while (list.children.length > 50) list.removeChild(list.lastChild);
+}
+
+function pad(n) { return n < 10 ? "0" + n : String(n); }
+
+// ── ПОБЕДИТЕЛЬ ────────────────────────────────────────────────
+function showWinner(gs) {
+  var overlay = document.getElementById("winnerOverlay");
+  var nameEl  = document.getElementById("winnerName");
+  var msgEl   = document.getElementById("winnerMsg");
+
+  var winnerPlayer = gs.players ? gs.players.filter(function(p){ return p.playerId === gs.winner; })[0] : null;
+  var winnerName   = winnerPlayer ? winnerPlayer.nickname : "Неизвестный";
+  var isMe         = gs.winner === state.playerId;
+
+  nameEl.textContent = isMe ? "ВЫ ПОБЕДИЛИ!" : winnerName.toUpperCase();
+  msgEl.textContent  = isMe ? "Все корабли противника потоплены!" : "одержал победу в морском бою";
+  overlay.classList.add("show");
+}
+
+function closeWinner() {
+  document.getElementById("winnerOverlay").classList.remove("show");
+}
+
+// ── ВЫХОД ────────────────────────────────────────────────────
+function leaveGame() {
+  stopPolling();
+  clearSession();
+  state.gameState  = null;
+  state.winnerShown = false;
+  document.getElementById("loginScreen").style.display = "flex";
+  document.getElementById("gameScreen").style.display  = "none";
+  document.getElementById("loginMsg").innerHTML = "";
+  document.getElementById("logList").innerHTML  = "";
+  document.getElementById("winnerOverlay").classList.remove("show");
+}
+
+// ── ПЕРЕЗАПУСК (ADMIN) ────────────────────────────────────────
+async function restartGame() {
+  var pwd = document.getElementById("adminPassword").value.trim();
+  if (!pwd) { alert("Введите пароль"); return; }
+  try {
+    var res = await apiPost({ action: "restart", password: pwd });
+    if (res.ok) {
+      state.winnerShown = false;
+      document.getElementById("winnerOverlay").classList.remove("show");
+      alert("Игра перезапущена");
+      leaveGame();
+    } else {
+      alert("Ошибка: " + res.error);
+    }
+  } catch(e) { alert("Ошибка запроса"); }
+}
+
+// ── ИНИЦИАЛИЗАЦИЯ ─────────────────────────────────────────────
+(function init() {
+  // Проверяем сохранённую сессию
+  if (loadSession()) {
+    enterGameScreen();
+  }
+
+  // Enter в полях ввода
+  document.getElementById("inNickname").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") joinGame();
+  });
+  document.getElementById("inPassword").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") forceJoin();
+  });
+})();
+</script>
+</body>
 </html>
