@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Морской Бой</title>
+<style>
+  /* ── ШРИФТЫ ─────────────────────────────────────────── */
+  @import url('https://fonts.googleapis.com/css2?family=Russo+One&family=Share+Tech+Mono&display=swap');
+
+  /* ── ПЕРЕМЕННЫЕ ─────────────────────────────────────── */
+  :root {
+    --sea-deep:    #020d18;
+    --sea-mid:     #041f35;
+    --sea-light:   #073358;
+    --water:       #0a4975;
+    --wave:        #0e6ba8;
+    --foam:        #1a9fd4;
+    --ice:         #a8e4ff;
+    --white:       #e8f4ff;
+    --hit:         #ff4444;
+    --miss:        #3a7bd5;
+    --sunk:        #ff6b00;
+    --ship:        #2ecc71;
+    --ship-hit:    #ff4444;
+    --my-ship:     #27ae60;
+    --gold:        #f0c040;
+    --red:         #e74c3c;
+    --cell-size:   36px;
+    --gap:         2px;
+    --radius:      4px;
+  }
+
+  /* ── СБРОС И БАЗОВЫЕ СТИЛИ ───────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--sea-deep);
+    color: var(--white);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+    background-image:
+      radial-gradient(ellipse at 20% 50%, rgba(6,60,120,0.3) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(4,40,80,0.4) 0%, transparent 50%);
+  }
+
+  /* ── АНИМАЦИИ ─────────────────────────────────────────── */
+  @keyframes wave {
+    0%, 100% { transform: translateY(0); }
+    50%       { transform: translateY(-4px); }
+  }
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 8px var(--foam); }
+    50%       { box-shadow: 0 0 20px var(--foam), 0 0 40px rgba(26,159,212,0.3); }
+  }
+  @keyframes hit-flash {
+    0%   { background: var(--hit); transform: scale(1.3); }
+    100% { background: var(--ship-hit); transform: scale(1); }
+  }
+  @keyframes miss-ripple {
+    0%   { transform: scale(0.5); opacity: 1; }
+    100% { transform: scale(1.5); opacity: 0; }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes scanline {
+    0%   { top: -10%; }
+    100% { top: 110%; }
+  }
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+  }
+
+  /* ── ШАПКА ────────────────────────────────────────────── */
+  header {
+    text-align: center;
+    padding: 24px 20px 16px;
+    position: relative;
+    border-bottom: 1px solid rgba(26,159,212,0.2);
+  }
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px; left: 50%;
+    transform: translateX(-50%);
+    width: 200px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--foam), transparent);
+  }
+  .logo {
+    font-family: 'Russo One', sans-serif;
+    font-size: clamp(28px, 5vw, 48px);
+    letter-spacing: 6px;
+    color: var(--white);
+    text-shadow: 0 0 30px rgba(26,159,212,0.6), 0 0 60px rgba(26,159,212,0.2);
+    animation: wave 4s ease-in-out infinite;
+  }
+  .logo span {
+    color: var(--foam);
+  }
+  .subtitle {
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: rgba(168,228,255,0.5);
+    margin-top: 4px;
+  }
+
+  /* ── ОСНОВНОЙ КОНТЕЙНЕР ──────────────────────────────── */
+  .app {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+
+  /* ── ЭКРАН ВХОДА ─────────────────────────────────────── */
+  #loginScreen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    gap: 20px;
+    animation: fadeIn 0.4s ease;
+  }
+  .login-card {
+    background: rgba(4,31,53,0.8);
+    border: 1px solid rgba(26,159,212,0.25);
+    border-radius: 12px;
+    padding: 36px 40px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+    position: relative;
+    overflow: hidden;
+  }
+  .login-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--foam), transparent);
+  }
+  .login-card h2 {
+    font-family: 'Russo One', sans-serif;
+    font-size: 16px;
+    letter-spacing: 3px;
+    color: var(--foam);
+    margin-bottom: 24px;
+    text-align: center;
+  }
+
+  .field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .field-group label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: rgba(168,228,255,0.6);
+  }
+  input[type="text"],
+  input[type="password"],
+  input[type="number"] {
+    background: rgba(2,13,24,0.8);
+    border: 1px solid rgba(26,159,212,0.3);
+    border-radius: 6px;
+    color: var(--white);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 14px;
+    padding: 10px 14px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    width: 100%;
+  }
+  input:focus {
+    border-color: var(--foam);
+    box-shadow: 0 0 0 3px rgba(26,159,212,0.15);
+  }
+
+  .hint {
+    font-size: 10px;
+    color: rgba(168,228,255,0.4);
+    margin-top: 2px;
+  }
+
+  /* ── КНОПКИ ──────────────────────────────────────────── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 11px 24px;
+    border: none;
+    border-radius: 6px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    width: 100%;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--wave), var(--foam));
+    color: var(--sea-deep);
+    font-weight: bold;
+  }
+  .btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(26,159,212,0.4);
+  }
+  .btn-danger {
+    background: linear-gradient(135deg, #8b0000, var(--red));
+    color: var(--white);
+  }
+  .btn-danger:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(231,76,60,0.4);
+  }
+  .btn-ghost {
+    background: rgba(26,159,212,0.1);
+    color: var(--foam);
+    border: 1px solid rgba(26,159,212,0.3);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: rgba(26,159,212,0.2);
+  }
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .btn-sm {
+    padding: 7px 14px;
+    font-size: 11px;
+    width: auto;
+  }
+
+  /* ── СООБЩЕНИЯ ───────────────────────────────────────── */
+  .message {
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    letter-spacing: 1px;
+    margin-top: 12px;
+    animation: fadeIn 0.3s ease;
+  }
+  .message-error {
+    background: rgba(231,76,60,0.15);
+    border: 1px solid rgba(231,76,60,0.4);
+    color: #ff8080;
+  }
+  .message-success {
+    background: rgba(46,204,113,0.12);
+    border: 1px solid rgba(46,204,113,0.3);
+    color: #7dffb3;
+  }
+  .message-info {
+    background: rgba(26,159,212,0.12);
+    border: 1px solid rgba(26,159,212,0.3);
+    color: var(--foam);
+  }
+
+  /* ── РАЗДЕЛИТЕЛЬ ─────────────────────────────────────── */
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 20px 0;
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(26,159,212,0.2);
+  }
+  .divider span {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: rgba(168,228,255,0.4);
+  }
+
+  /* ── ИГРОВОЙ ЭКРАН ───────────────────────────────────── */
+  #gameScreen {
+    display: none;
+    animation: fadeIn 0.4s ease;
+  }
+
+  /* ── СТАТУС-БАР ──────────────────────────────────────── */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(4,31,53,0.7);
+    border: 1px solid rgba(26,159,212,0.2);
+    border-radius: 8px;
+    padding: 12px 20px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .status-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .status-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: rgba(168,228,255,0.4);
+  }
+  .status-value {
+    font-size: 14px;
+    color: var(--white);
+    letter-spacing: 1px;
+  }
+  .status-value.active {
+    color: var(--foam);
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  .status-phase {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .phase-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--foam);
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+  .phase-dot.waiting { background: var(--gold); }
+  .phase-dot.playing { background: var(--ship); }
+  .phase-dot.finished { background: var(--red); animation: none; }
+
+  /* ── ИГРОВЫЕ ПОЛЯ ────────────────────────────────────── */
+  .boards-container {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .board-panel {
+    background: rgba(4,31,53,0.6);
+    border: 1px solid rgba(26,159,212,0.2);
+    border-radius: 10px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+    overflow: hidden;
+  }
+  .board-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(26,159,212,0.4), transparent);
+  }
+  .board-title {
+    font-family: 'Russo One', sans-serif;
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: rgba(168,228,255,0.7);
+  }
+  .board-title.enemy { color: var(--red); }
+
+  /* ── СЕТКА ПОЛЯ ──────────────────────────────────────── */
+  .grid-wrapper {
+    display: flex;
+    gap: 0;
+  }
+  .grid-labels-col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+    margin-top: calc(var(--cell-size) + var(--gap));
+    margin-right: 4px;
+  }
+  .grid-labels-row {
+    display: flex;
+    gap: var(--gap);
+    margin-left: 0;
+    margin-bottom: 4px;
+    padding-left: 24px;
+  }
+  .grid-label {
+    width: var(--cell-size);
+    height: var(--cell-size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: rgba(168,228,255,0.35);
+    letter-spacing: 0;
+  }
+  .grid-label-side {
+    width: 20px;
+    height: var(--cell-size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: rgba(168,228,255,0.35);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(10, var(--cell-size));
+    grid-template-rows:    repeat(10, var(--cell-size));
+    gap: var(--gap);
+  }
+
+  /* ── КЛЕТКИ ПОЛЯ ─────────────────────────────────────── */
+  .cell {
+    width: var(--cell-size);
+    height: var(--cell-size);
+    border-radius: var(--radius);
+    background: rgba(7,51,88,0.5);
+    border: 1px solid rgba(10,73,117,0.6);
+    transition: background 0.15s, transform 0.1s, border-color 0.15s;
+    cursor: default;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Клетки поля противника — кликабельные */
+  .cell.enemy-cell.shootable {
+    cursor: crosshair;
+  }
+  .cell.enemy-cell.shootable:hover {
+    background: rgba(26,159,212,0.25);
+    border-color: var(--foam);
+    transform: scale(1.08);
+    z-index: 2;
+  }
+
+  /* Корабль (собственное поле) */
+  .cell.ship {
+    background: rgba(39,174,96,0.4);
+    border-color: rgba(46,204,113,0.6);
+  }
+  .cell.ship::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 2px;
+    background: rgba(46,204,113,0.3);
+  }
+
+  /* Попадание */
+  .cell.hit {
+    background: rgba(255,68,68,0.5);
+    border-color: var(--hit);
+    animation: hit-flash 0.3s ease;
+  }
+  .cell.hit::after {
+    content: '✕';
+    color: var(--hit);
+    font-size: 18px;
+    font-weight: bold;
+    text-shadow: 0 0 8px var(--hit);
+  }
+
+  /* Потоплен */
+  .cell.sunk {
+    background: rgba(255,107,0,0.45);
+    border-color: var(--sunk);
+  }
+  .cell.sunk::after {
+    content: '✕';
+    color: var(--sunk);
+    font-size: 18px;
+    font-weight: bold;
+    text-shadow: 0 0 10px var(--sunk);
+  }
+
+  /* Промах */
+  .cell.miss {
+    background: rgba(58,123,213,0.2);
+    border-color: rgba(58,123,213,0.5);
+  }
+  .cell.miss::after {
+    content: '·';
+    color: rgba(168,228,255,0.6);
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  /* Корабль подбит (собственное поле) */
+  .cell.my-hit {
+    background: rgba(255,68,68,0.35);
+    border-color: var(--hit);
+  }
+  .cell.my-hit::after {
+    content: '✕';
+    color: var(--hit);
+    font-size: 18px;
+  }
+  .cell.my-sunk {
+    background: rgba(255,107,0,0.35);
+    border-color: var(--sunk);
+  }
+  .cell.my-sunk::after {
+    content: '✕';
+    color: var(--sunk);
+    font-size: 16px;
+  }
+
+  /* ── ЛЕНТА СОБЫТИЙ ───────────────────────────────────── */
+  .log-panel {
+    background: rgba(4,31,53,0.6);
+    border: 1px solid rgba(26,159,212,0.2);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+  .log-panel h3 {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: rgba(168,228,255,0.5);
+    margin-bottom: 10px;
+  }
+  .log-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .log-list::-webkit-scrollbar { width: 4px; }
+  .log-list::-webkit-scrollbar-track { background: transparent; }
+  .log-list::-webkit-scrollbar-thumb { background: rgba(26,159,212,0.3); border-radius: 2px; }
+  .log-entry {
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: rgba(2,13,24,0.4);
+    animation: fadeIn 0.3s ease;
+  }
+  .log-entry.hit  { color: var(--hit);  border-left: 2px solid var(--hit); }
+  .log-entry.miss { color: var(--miss); border-left: 2px solid var(--miss); }
+  .log-entry.sunk { color: var(--sunk); border-left: 2px solid var(--sunk); }
+  .log-entry .ts  { color: rgba(168,228,255,0.3); margin-right: 8px; font-size: 10px; }
+
+  /* ── ПАНЕЛЬ ПОБЕДИТЕЛЯ ───────────────────────────────── */
+  .winner-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(2,13,24,0.88);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .winner-overlay.show { display: flex; }
+  .winner-card {
+    background: rgba(4,31,53,0.97);
+    border: 2px solid var(--gold);
+    border-radius: 16px;
+    padding: 48px 56px;
+    text-align: center;
+    box-shadow: 0 0 80px rgba(240,192,64,0.2);
+    animation: fadeIn 0.5s ease;
+  }
+  .winner-card .crown { font-size: 56px; margin-bottom: 16px; }
+  .winner-card h2 {
+    font-family: 'Russo One', sans-serif;
+    font-size: 28px;
+    letter-spacing: 4px;
+    color: var(--gold);
+    text-shadow: 0 0 20px rgba(240,192,64,0.4);
+    margin-bottom: 8px;
+  }
+  .winner-card p {
+    color: rgba(168,228,255,0.6);
+    font-size: 13px;
+    letter-spacing: 2px;
+    margin-bottom: 24px;
+  }
+
+  /* ── НИЖНЯЯ ПАНЕЛЬ ДЕЙСТВИЙ ──────────────────────────── */
+  .actions-bar {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  /* ── ОЖИДАНИЕ ─────────────────────────────────────────── */
+  .waiting-msg {
+    text-align: center;
+    padding: 40px 20px;
+  }
+  .waiting-msg .icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    animation: wave 3s ease-in-out infinite;
+    display: block;
+  }
+  .waiting-msg h3 {
+    font-family: 'Russo One', sans-serif;
+    font-size: 18px;
+    letter-spacing: 3px;
+    color: var(--gold);
+    margin-bottom: 8px;
+  }
+  .waiting-msg p {
+    font-size: 12px;
+    color: rgba(168,228,255,0.5);
+    letter-spacing: 1px;
+  }
+
+  /* ── ЛЕГЕНДА ─────────────────────────────────────────── */
+  .legend {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: rgba(168,228,255,0.5);
+    letter-spacing: 1px;
+  }
+  .legend-dot {
+    width: 12px; height: 12px;
+    border-radius: 2px;
+    border: 1px solid;
+  }
+  .legend-dot.ship   { background: rgba(39,174,96,0.4);  border-color: rgba(46,204,113,0.6); }
+  .legend-dot.hit    { background: rgba(255,68,68,0.5);   border-color: var(--hit); }
+  .legend-dot.miss   { background: rgba(58,123,213,0.2);  border-color: rgba(58,123,213,0.5); }
+  .legend-dot.sunk   { background: rgba(255,107,0,0.45);  border-color: var(--sunk); }
+  .legend-dot.water  { background: rgba(7,51,88,0.5);     border-color: rgba(10,73,117,0.6); }
+
+  /* ── ADMIN PANEL ─────────────────────────────────────── */
+  .admin-panel {
+    background: rgba(4,31,53,0.6);
+    border: 1px solid rgba(240,192,64,0.2);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+  }
+  .admin-panel summary {
+    cursor: pointer;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: rgba(240,192,64,0.6);
+    user-select: none;
+    outline: none;
+  }
+  .admin-panel summary:hover { color: var(--gold); }
+  .admin-inner {
+    margin-top: 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+  }
+  .admin-inner .field-group { margin-bottom: 0; flex: 1; min-width: 120px; }
+
+  /* ── ИНДИКАТОР POLLING ───────────────────────────────── */
+  .polling-dot {
+    position: fixed;
+    bottom: 16px; right: 16px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--foam);
+    opacity: 0.6;
+    transition: opacity 0.3s;
+  }
+  .polling-dot.active { animation: pulse-glow 0.5s ease; opacity: 1; }
+
+  /* ── АДАПТИВНОСТЬ ─────────────────────────────────────── */
+  @media (max-width: 640px) {
+    :root { --cell-size: 28px; }
+    .login-card { padding: 24px 20px; }
+    .status-bar { padding: 10px 14px; }
+    .winner-card { padding: 32px 24px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ШАПКА -->
+<header>
+  <div class="logo">МОРСКОЙ <span>БОЙ</span></div>
+  <div class="subtitle">NAVAL COMBAT • 2 ИГРОКА</div>
+</header>
+
+<div class="app">
+
+  <!-- ── ЭКРАН ВХОДА ──────────────────────────────────── -->
+  <div id="loginScreen">
+    <div class="login-card">
+      <h2>⚓ ВХОД В ИГРУ</h2>
+
+      <div class="field-group">
+        <label>НИКНЕЙМ</label>
+        <input type="text" id="inNickname" placeholder="Введите никнейм" maxlength="20">
+      </div>
+
+      <button class="btn btn-primary" onclick="joinGame()">
+        🚢 ВОЙТИ В ИГРУ
+      </button>
+
+      <div id="loginMsg"></div>
+
+      <div class="divider"><span>ПРИНУДИТЕЛЬНЫЙ ВХОД</span></div>
+
+      <div class="field-group">
+        <label>ПАРОЛЬ АДМИНИСТРАТОРА</label>
+        <input type="password" id="inPassword" placeholder="Пароль для кика игрока">
+      </div>
+      <div class="field-group">
+        <label>КИКНУТЬ СЛОТ</label>
+        <select id="inKickSlot" style="background:rgba(2,13,24,0.8);border:1px solid rgba(26,159,212,0.3);border-radius:6px;color:#e8f4ff;font-family:'Share Tech Mono',monospace;font-size:14px;padding:10px 14px;width:100%;outline:none;">
+          <option value="1">Слот 1 (первый игрок)</option>
+          <option value="2">Слот 2 (второй игрок)</option>
+        </select>
+      </div>
+
+      <button class="btn btn-danger" onclick="forceJoin()">
+        ⚡ ПРИНУДИТЕЛЬНЫЙ ВХОД
+      </button>
+    </div>
+  </div>
+
+  <!-- ── ИГРОВОЙ ЭКРАН ────────────────────────────────── -->
+  <div id="gameScreen">
+
+    <!-- Статус-бар -->
+    <div class="status-bar">
+      <div class="status-item">
+        <div class="status-label">ВЫ</div>
+        <div class="status-value" id="statusMe">—</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">ПРОТИВНИК</div>
+        <div class="status-value" id="statusEnemy">Ожидание...</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">ФАЗ</div>
+        <div class="status-phase">
+          <div class="phase-dot waiting" id="phaseDot"></div>
+          <div class="status-value" id="statusPhase">Ожидание</div>
+        </div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">ХОД</div>
+        <div class="status-value" id="statusTurn">—</div>
+      </div>
+    </div>
+
+    <!-- Ожидание второго игрока -->
+    <div id="waitingBlock" class="waiting-msg">
+      <span class="icon">⚓</span>
+      <h3>ОЖИДАНИЕ ПРОТИВНИКА</h3>
+      <p>Поделитесь ссылкой на эту страницу со вторым игроком</p>
+    </div>
+
+    <!-- Игровые поля -->
+    <div id="boardsBlock" style="display:none;">
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot ship"></div>Ваш корабль</div>
+        <div class="legend-item"><div class="legend-dot hit"></div>Попадание</div>
+        <div class="legend-item"><div class="legend-dot sunk"></div>Потоплен</div>
+        <div class="legend-item"><div class="legend-dot miss"></div>Промах</div>
+        <div class="legend-item"><div class="legend-dot water"></div>Вода</div>
+      </div>
+
+      <div class="boards-container">
+        <!-- Моё поле -->
+        <div class="board-panel">
+          <div class="board-title">⚓ МОЁ ПОЛЕ</div>
+          <div class="grid-labels-row" id="myLabelsRow"></div>
+          <div class="grid-wrapper">
+            <div class="grid-labels-col" id="myLabelsCol"></div>
+            <div class="grid" id="myGrid"></div>
+          </div>
+        </div>
+
+        <!-- Поле противника -->
+        <div class="board-panel">
+          <div class="board-title enemy">🎯 ПОЛЕ ПРОТИВНИКА</div>
+          <div class="grid-labels-row" id="enemyLabelsRow"></div>
+          <div class="grid-wrapper">
+            <div class="grid-labels-col" id="enemyLabelsCol"></div>
+            <div class="grid" id="enemyGrid"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Журнал ходов -->
+      <div class="log-panel">
+        <h3>📋 ЖУРНАЛ ХОДОВ</h3>
+        <ul class="log-list" id="logList"></ul>
+      </div>
+    </div>
+
+    <!-- Кнопки действий -->
+    <div class="actions-bar">
+      <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
+    </div>
+
+    <!-- Админ-панель -->
+    <details class="admin-panel">
+      <summary>⚙ АДМИНИСТРИРОВАНИЕ</summary>
+      <div class="admin-inner">
+        <div class="field-group">
+          <label>ПАРОЛЬ АДМИНИСТРАТОРА</label>
+          <input type="password" id="adminPassword" placeholder="Пароль">
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="restartGame()">
+          🔄 Перезапустить игру
+        </button>
+      </div>
+    </details>
+
+  </div><!-- /gameScreen -->
+
+</div><!-- /app -->
+
+<!-- Оверлей победителя -->
+<div class="winner-overlay" id="winnerOverlay">
+  <div class="winner-card">
+    <div class="crown">🏆</div>
+    <h2 id="winnerName">ПОБЕДИТЕЛЬ</h2>
+    <p id="winnerMsg">одержал победу в морском бою</p>
+    <button class="btn btn-primary" onclick="closeWinner()">Продолжить</button>
+  </div>
+</div>
+
+<!-- Индикатор polling -->
+<div class="polling-dot" id="pollingDot"></div>
+
+<script>
+// ============================================================
+// МОРСКОЙ БОЙ — Клиентская логика
+// ============================================================
+
+// ── КОНФИГУРАЦИЯ ─────────────────────────────────────────────
+// ⚠️ ЗАМЕНИТЕ НА ВАШ URL после деплоя Apps Script
+var API_URL = "https://script.google.com/macros/s/AKfycbweyXePM7ZS41976UggUGAx6NeAadlqq5ykumIDJ_Rnb1XHoxf53etBDaLJROM7JDC-CA/exec";
+
+var POLL_INTERVAL = 200; // мс между запросами состояния
+
+// ── СОСТОЯНИЕ ПРИЛОЖЕНИЯ ─────────────────────────────────────
+var state = {
+  playerId:    null,
+  mySlot:      null,
+  nickname:    null,
+  myBoard:     null,  // 10x10 массив кораблей
+  gameState:   null,  // последнее состояние с сервера
+  pollTimer:   null,
+  log:         [],    // локальный журнал ходов
+  winnerShown: false
+};
+
+// ── ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ──────────────────────────────────
+
+// Буквы для столбцов (А-К)
+var COL_LABELS = ["А","Б","В","Г","Д","Е","Ж","З","И","К"];
+var ROW_LABELS = ["1","2","3","4","5","6","7","8","9","10"];
+
+// Запрос к API
+async function apiPost(data) {
+  var resp = await fetch(API_URL, {
+    method: "POST",
+    body:   JSON.stringify(data),
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    redirect: "follow"
+  });
+  return resp.json();
+}
+
+async function apiGet(params) {
+  var url = API_URL + "?action=state";
+  if (params.playerId) url += "&playerId=" + encodeURIComponent(params.playerId);
+  var resp = await fetch(url, { redirect: "follow" });
+  return resp.json();
+}
+
+// Показать сообщение на экране входа
+function showLoginMsg(text, type) {
+  var el = document.getElementById("loginMsg");
+  el.innerHTML = '<div class="message message-' + type + '">' + text + '</div>';
+}
+
+// Сохранить сессию в localStorage
+function saveSession() {
+  localStorage.setItem("mb_playerId",  state.playerId);
+  localStorage.setItem("mb_nickname",  state.nickname);
+  localStorage.setItem("mb_mySlot",    state.mySlot);
+}
+
+// Загрузить сессию из localStorage
+function loadSession() {
+  state.playerId = localStorage.getItem("mb_playerId");
+  state.nickname = localStorage.getItem("mb_nickname");
+  state.mySlot   = parseInt(localStorage.getItem("mb_mySlot")) || null;
+  return !!(state.playerId && state.nickname);
+}
+
+// Очистить сессию
+function clearSession() {
+  localStorage.removeItem("mb_playerId");
+  localStorage.removeItem("mb_nickname");
+  localStorage.removeItem("mb_mySlot");
+  state.playerId = null;
+  state.nickname = null;
+  state.mySlot   = null;
+  state.myBoard  = null;
+}
+
+// ── ВХОД В ИГРУ ───────────────────────────────────────────────
+async function joinGame() {
+  var nickname = document.getElementById("inNickname").value.trim();
+  if (!nickname) { showLoginMsg("Введите никнейм", "error"); return; }
+
+  showLoginMsg("Подключение...", "info");
+  try {
+    var res = await apiPost({ action: "join", nickname: nickname });
+    if (!res.ok) { showLoginMsg(res.error, "error"); return; }
+    state.playerId = res.playerId;
+    state.mySlot   = res.slot;
+    state.nickname = nickname;
+    saveSession();
+    enterGameScreen();
+  } catch(e) {
+    showLoginMsg("Ошибка подключения. Проверьте URL API.", "error");
+    console.error(e);
+  }
+}
+
+// ── ПРИНУДИТЕЛЬНЫЙ ВХОД ───────────────────────────────────────
+async function forceJoin() {
+  var nickname = document.getElementById("inNickname").value.trim();
+  var password = document.getElementById("inPassword").value.trim();
+  var kickSlot = parseInt(document.getElementById("inKickSlot").value);
+
+  if (!nickname) { showLoginMsg("Введите никнейм", "error"); return; }
+  if (!password) { showLoginMsg("Введите пароль", "error"); return; }
+
+  showLoginMsg("Подключение...", "info");
+  try {
+    var res = await apiPost({
+      action:   "forceJoin",
+      nickname: nickname,
+      password: password,
+      kickSlot: kickSlot
+    });
+    if (!res.ok) { showLoginMsg(res.error, "error"); return; }
+    state.playerId = res.playerId;
+    state.mySlot   = res.slot;
+    state.nickname = nickname;
+    saveSession();
+    showLoginMsg("Игрок \"" + res.kicked + "\" выбит. Вы заняли его место.", "success");
+    setTimeout(enterGameScreen, 800);
+  } catch(e) {
+    showLoginMsg("Ошибка подключения", "error");
+    console.error(e);
+  }
+}
+
+// ── ПЕРЕХОД В ИГРОВОЙ ЭКРАН ───────────────────────────────────
+function enterGameScreen() {
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("gameScreen").style.display  = "block";
+  buildGridLabels();
+  buildGrids();
+  startPolling();
+}
+
+// ── ПОСТРОЕНИЕ МЕТОК СЕТКИ ────────────────────────────────────
+function buildGridLabels() {
+  // Метки столбцов (буквы)
+  ["myLabelsRow","enemyLabelsRow"].forEach(function(id) {
+    var el = document.getElementById(id);
+    el.innerHTML = "";
+    COL_LABELS.forEach(function(l) {
+      var d = document.createElement("div");
+      d.className = "grid-label";
+      d.textContent = l;
+      el.appendChild(d);
+    });
+  });
+
+  // Метки строк (цифры)
+  ["myLabelsCol","enemyLabelsCol"].forEach(function(id) {
+    var el = document.getElementById(id);
+    el.innerHTML = "";
+    ROW_LABELS.forEach(function(l) {
+      var d = document.createElement("div");
+      d.className = "grid-label-side";
+      d.textContent = l;
+      el.appendChild(d);
+    });
+  });
+}
+
+// ── ПОСТРОЕНИЕ СЕТОК ──────────────────────────────────────────
+function buildGrids() {
+  buildGrid("myGrid",    false);
+  buildGrid("enemyGrid", true);
+}
+
+function buildGrid(gridId, isEnemy) {
+  var el = document.getElementById(gridId);
+  el.innerHTML = "";
+  for (var r = 0; r < 10; r++) {
+    for (var c = 0; c < 10; c++) {
+      var cell = document.createElement("div");
+      cell.className = "cell" + (isEnemy ? " enemy-cell" : "");
+      cell.dataset.x = c;
+      cell.dataset.y = r;
+      if (isEnemy) {
+        (function(cx, cy) {
+          cell.addEventListener("click", function() { shoot(cx, cy); });
+        })(c, r);
+      }
+      el.appendChild(cell);
+    }
+  }
+}
+
+// ── ВЫСТРЕЛ ───────────────────────────────────────────────────
+async function shoot(x, y) {
+  var gs = state.gameState;
+  if (!gs || gs.phase !== "playing") return;
+  if (gs.turn !== state.playerId)    return;  // не мой ход
+
+  // Получаем выстрелы уже сделанные мной
+  var myShots = state.mySlot === 1 ? gs.shotsP1 : gs.shotsP2;
+  for (var i = 0; i < myShots.length; i++) {
+    if (myShots[i].x === x && myShots[i].y === y) return; // уже стреляли
+  }
+
+  // Блокируем поле на время запроса
+  setEnemyGridShootable(false);
+
+  try {
+    var res = await apiPost({
+      action:   "move",
+      playerId: state.playerId,
+      x:        x,
+      y:        y
+    });
+    if (!res.ok) {
+      addLog("Ошибка: " + res.error, "miss");
+    } else {
+      if (res.gameOver) {
+        fetchState(); // обновим сразу
+      }
+    }
+  } catch(e) {
+    console.error("Ошибка выстрела:", e);
+  }
+
+  // polling обновит состояние
+}
+
+// ── POLLING СОСТОЯНИЯ ─────────────────────────────────────────
+function startPolling() {
+  fetchState();
+  state.pollTimer = setInterval(fetchState, POLL_INTERVAL);
+}
+
+function stopPolling() {
+  if (state.pollTimer) {
+    clearInterval(state.pollTimer);
+    state.pollTimer = null;
+  }
+}
+
+async function fetchState() {
+  var dot = document.getElementById("pollingDot");
+  dot.classList.add("active");
+
+  try {
+    var gs = await apiGet({ playerId: state.playerId });
+    dot.classList.remove("active");
+    if (!gs.ok) return;
+    processGameState(gs);
+  } catch(e) {
+    dot.classList.remove("active");
+    console.error("Polling ошибка:", e);
+  }
+}
+
+// ── ОБРАБОТКА СОСТОЯНИЯ ───────────────────────────────────────
+function processGameState(gs) {
+  var prevState = state.gameState;
+  state.gameState = gs;
+
+  // Обновляем своё поле кораблей
+  if (gs.myBoard) state.myBoard = gs.myBoard;
+
+  updateStatusBar(gs);
+
+  if (gs.phase === "waiting") {
+    document.getElementById("waitingBlock").style.display = "block";
+    document.getElementById("boardsBlock").style.display  = "none";
+    return;
+  }
+
+  document.getElementById("waitingBlock").style.display = "none";
+  document.getElementById("boardsBlock").style.display  = "block";
+
+  renderMyBoard(gs);
+  renderEnemyBoard(gs);
+
+  // Управление кликабельностью поля противника
+  var isMyTurn = (gs.phase === "playing" && gs.turn === state.playerId);
+  setEnemyGridShootable(isMyTurn);
+
+  // Определяем новые выстрелы для журнала
+  updateLog(gs, prevState);
+
+  // Победитель
+  if (gs.phase === "finished" && gs.winner && !state.winnerShown) {
+    state.winnerShown = true;
+    stopPolling();
+    showWinner(gs);
+  }
+}
+
+// ── ОБНОВЛЕНИЕ СТАТУС-БАРА ────────────────────────────────────
+function updateStatusBar(gs) {
+  var me = gs.players ? gs.players.filter(function(p){ return p.playerId === state.playerId; })[0] : null;
+  var enemy = gs.players ? gs.players.filter(function(p){ return p.playerId !== state.playerId; })[0] : null;
+
+  document.getElementById("statusMe").textContent    = state.nickname || "—";
+  document.getElementById("statusEnemy").textContent = enemy ? enemy.nickname : "Ожидание...";
+
+  // Фаза
+  var phaseMap = { waiting: "Ожидание", playing: "Игра идёт", finished: "Игра окончена" };
+  var dot = document.getElementById("phaseDot");
+  dot.className = "phase-dot " + (gs.phase || "waiting");
+  document.getElementById("statusPhase").textContent = phaseMap[gs.phase] || gs.phase;
+
+  // Чей ход
+  var turnPlayer = gs.players ? gs.players.filter(function(p){ return p.playerId === gs.turn; })[0] : null;
+  var turnEl = document.getElementById("statusTurn");
+  if (!turnPlayer) {
+    turnEl.textContent = "—";
+    turnEl.classList.remove("active");
+  } else {
+    turnEl.textContent = turnPlayer.nickname;
+    if (gs.turn === state.playerId) {
+      turnEl.textContent += " (ВАШ ХОД)";
+      turnEl.classList.add("active");
+    } else {
+      turnEl.classList.remove("active");
+    }
+  }
+}
+
+// ── РЕНДЕР СВОЕГО ПОЛЯ ────────────────────────────────────────
+function renderMyBoard(gs) {
+  var board = state.myBoard;
+  if (!board) return;
+
+  // Выстрелы противника по мне
+  var enemyShots = state.mySlot === 1 ? gs.shotsP2 : gs.shotsP1;
+  var shotMap = {};
+  if (enemyShots) {
+    enemyShots.forEach(function(s) {
+      shotMap[s.y + "_" + s.x] = s.result;
+    });
+  }
+
+  var cells = document.querySelectorAll("#myGrid .cell");
+  cells.forEach(function(cell) {
+    var x = parseInt(cell.dataset.x);
+    var y = parseInt(cell.dataset.y);
+    var key = y + "_" + x;
+    var cellVal = board[y][x];
+    var shot = shotMap[key];
+
+    cell.className = "cell";
+    if (shot === "sunk")      cell.classList.add("my-sunk");
+    else if (shot === "hit")  cell.classList.add("my-hit");
+    else if (shot === "miss") cell.classList.add("miss");
+    else if (cellVal === 1 || cellVal === 2) cell.classList.add("ship");
+  });
+}
+
+// ── РЕНДЕР ПОЛЯ ПРОТИВНИКА ────────────────────────────────────
+function renderEnemyBoard(gs) {
+  // Мои выстрелы по противнику
+  var myShots = state.mySlot === 1 ? gs.shotsP1 : gs.shotsP2;
+  var shotMap = {};
+  if (myShots) {
+    myShots.forEach(function(s) {
+      shotMap[s.y + "_" + s.x] = s.result;
+    });
+  }
+
+  var cells = document.querySelectorAll("#enemyGrid .cell");
+  cells.forEach(function(cell) {
+    var x = parseInt(cell.dataset.x);
+    var y = parseInt(cell.dataset.y);
+    var key = y + "_" + x;
+    var shot = shotMap[key];
+
+    cell.className = "cell enemy-cell";
+    if (shot === "sunk")      cell.classList.add("sunk");
+    else if (shot === "hit")  cell.classList.add("hit");
+    else if (shot === "miss") cell.classList.add("miss");
+  });
+}
+
+// ── КЛИКАБЕЛЬНОСТЬ ПОЛЯ ПРОТИВНИКА ───────────────────────────
+function setEnemyGridShootable(enabled) {
+  var cells = document.querySelectorAll("#enemyGrid .cell");
+  cells.forEach(function(cell) {
+    if (enabled && !cell.classList.contains("hit") &&
+        !cell.classList.contains("miss") &&
+        !cell.classList.contains("sunk")) {
+      cell.classList.add("shootable");
+    } else {
+      cell.classList.remove("shootable");
+    }
+  });
+}
+
+// ── ЖУРНАЛ ХОДОВ ─────────────────────────────────────────────
+function updateLog(gs, prevState) {
+  var myShots    = state.mySlot === 1 ? gs.shotsP1    : gs.shotsP2;
+  var enemyShots = state.mySlot === 1 ? gs.shotsP2    : gs.shotsP1;
+  var prevMy     = prevState ? (state.mySlot === 1 ? prevState.shotsP1 : prevState.shotsP2) : [];
+  var prevEnemy  = prevState ? (state.mySlot === 1 ? prevState.shotsP2 : prevState.shotsP1) : [];
+
+  // Новые мои выстрелы
+  if (myShots && myShots.length > (prevMy ? prevMy.length : 0)) {
+    for (var i = (prevMy ? prevMy.length : 0); i < myShots.length; i++) {
+      var s = myShots[i];
+      var resText = s.result === "hit" ? "Попадание" : s.result === "sunk" ? "Потоплен" : "Промах";
+      addLog("Вы → " + COL_LABELS[s.x] + ROW_LABELS[s.y] + ": " + resText, s.result);
+    }
+  }
+
+  // Новые выстрелы противника
+  var enemy = gs.players ? gs.players.filter(function(p){ return p.playerId !== state.playerId; })[0] : null;
+  var enemyName = enemy ? enemy.nickname : "Противник";
+  if (enemyShots && enemyShots.length > (prevEnemy ? prevEnemy.length : 0)) {
+    for (var j = (prevEnemy ? prevEnemy.length : 0); j < enemyShots.length; j++) {
+      var es = enemyShots[j];
+      var eText = es.result === "hit" ? "Попадание!" : es.result === "sunk" ? "Потопил!" : "Промах";
+      addLog(enemyName + " → " + COL_LABELS[es.x] + ROW_LABELS[es.y] + ": " + eText, es.result);
+    }
+  }
+}
+
+function addLog(text, type) {
+  var list = document.getElementById("logList");
+  var li   = document.createElement("li");
+  var now  = new Date();
+  var ts   = pad(now.getHours()) + ":" + pad(now.getMinutes()) + ":" + pad(now.getSeconds());
+  li.className = "log-entry " + (type || "miss");
+  li.innerHTML = '<span class="ts">' + ts + '</span>' + text;
+  list.insertBefore(li, list.firstChild);
+  // Ограничиваем журнал 50 записями
+  while (list.children.length > 50) list.removeChild(list.lastChild);
+}
+
+function pad(n) { return n < 10 ? "0" + n : String(n); }
+
+// ── ПОБЕДИТЕЛЬ ────────────────────────────────────────────────
+function showWinner(gs) {
+  var overlay = document.getElementById("winnerOverlay");
+  var nameEl  = document.getElementById("winnerName");
+  var msgEl   = document.getElementById("winnerMsg");
+
+  var winnerPlayer = gs.players ? gs.players.filter(function(p){ return p.playerId === gs.winner; })[0] : null;
+  var winnerName   = winnerPlayer ? winnerPlayer.nickname : "Неизвестный";
+  var isMe         = gs.winner === state.playerId;
+
+  nameEl.textContent = isMe ? "ВЫ ПОБЕДИЛИ!" : winnerName.toUpperCase();
+  msgEl.textContent  = isMe ? "Все корабли противника потоплены!" : "одержал победу в морском бою";
+  overlay.classList.add("show");
+}
+
+function closeWinner() {
+  document.getElementById("winnerOverlay").classList.remove("show");
+}
+
+// ── ВЫХОД ────────────────────────────────────────────────────
+function leaveGame() {
+  stopPolling();
+  clearSession();
+  state.gameState  = null;
+  state.winnerShown = false;
+  document.getElementById("loginScreen").style.display = "flex";
+  document.getElementById("gameScreen").style.display  = "none";
+  document.getElementById("loginMsg").innerHTML = "";
+  document.getElementById("logList").innerHTML  = "";
+  document.getElementById("winnerOverlay").classList.remove("show");
+}
+
+// ── ПЕРЕЗАПУСК (ADMIN) ────────────────────────────────────────
+async function restartGame() {
+  var pwd = document.getElementById("adminPassword").value.trim();
+  if (!pwd) { alert("Введите пароль"); return; }
+  try {
+    var res = await apiPost({ action: "restart", password: pwd });
+    if (res.ok) {
+      state.winnerShown = false;
+      document.getElementById("winnerOverlay").classList.remove("show");
+      alert("Игра перезапущена");
+      leaveGame();
+    } else {
+      alert("Ошибка: " + res.error);
+    }
+  } catch(e) { alert("Ошибка запроса"); }
+}
+
+// ── ИНИЦИАЛИЗАЦИЯ ─────────────────────────────────────────────
+(function init() {
+  // Проверяем сохранённую сессию
+  if (loadSession()) {
+    enterGameScreen();
+  }
+
+  // Enter в полях ввода
+  document.getElementById("inNickname").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") joinGame();
+  });
+  document.getElementById("inPassword").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") forceJoin();
+  });
+})();
+</script>
+</body>
+</html>
