@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Морской Бой</title>
+<title>NAVAL COMBAT</title>
 <style>
   /* ── ШРИФТЫ ─────────────────────────────────────────── */
   @import url('https://fonts.googleapis.com/css2?family=Russo+One&family=Share+Tech+Mono&display=swap');
@@ -658,10 +658,42 @@
   #inputLock {
     position: fixed; inset: 0; z-index: 900;
     pointer-events: all;
-    cursor: wait;
+    cursor: default;
     display: none;
   }
   #inputLock.active { display: block; }
+
+  /* Уведомление о выстреле (вместо курсора загрузки) */
+  #shootingNotice {
+    position: fixed;
+    bottom: 48px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    z-index: 950;
+    background: rgba(4,31,53,0.95);
+    border: 1px solid rgba(26,159,212,0.4);
+    border-radius: 30px;
+    padding: 10px 24px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--foam);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+  }
+  #shootingNotice.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .shooting-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--foam);
+    animation: pulse-glow 0.6s ease-in-out infinite;
+    flex-shrink: 0;
+  }
 
   /* ── УВЕДОМЛЕНИЕ О ЗАХВАТЕ ─────────────────────────────────── */
   .takeover-overlay {
@@ -702,13 +734,19 @@
 <!-- Input lock (блокирует всё взаимодействие во время анимации) -->
 <div id="inputLock"></div>
 
+<!-- Уведомление о выстреле -->
+<div id="shootingNotice">
+  <div class="shooting-dot"></div>
+  <span id="shootingNoticeText">ВЫСТРЕЛ...</span>
+</div>
+
 <!-- Объявление смены хода -->
 <div class="phase-announcement" id="phaseAnnouncement"></div>
 
 <!-- ШАПКА -->
 <header>
-  <div class="logo">МОРСКОЙ <span>БОЙ</span></div>
-  <div class="subtitle">NAVAL COMBAT • 2 ИГРОКА</div>
+  <div class="logo">NAVAL <span>COMBAT</span></div>
+  <div class="subtitle">2 ИГРОКА</div>
 </header>
 
 <div class="app">
@@ -724,7 +762,11 @@
       <button class="btn btn-primary" onclick="joinGame()">🚢 ВОЙТИ В ИГРУ</button>
       <div id="loginMsg"></div>
 
-      <div class="divider"><span>ПРИНУДИТЕЛЬНЫЙ ВХОД</span></div>
+      <details style="margin-top:16px;">
+        <summary style="cursor:pointer;font-size:10px;letter-spacing:2px;color:rgba(168,228,255,0.28);user-select:none;outline:none;list-style:none;text-align:center;padding:4px 0;">▸ СЛУЖЕБНЫЙ ВХОД</summary>
+        <div style="margin-top:14px;border-top:1px solid rgba(26,159,212,0.15);padding-top:14px;">
+
+      <div class="divider" style="margin:0 0 16px;"><span>ПРИНУДИТЕЛЬНЫЙ ВХОД</span></div>
       <div class="field-group">
         <label>ПАРОЛЬ АДМИНИСТРАТОРА</label>
         <input type="password" id="inPassword" placeholder="Пароль для кика игрока">
@@ -737,6 +779,8 @@
         </select>
       </div>
       <button class="btn btn-danger" onclick="forceJoin()">⚡ ПРИНУДИТЕЛЬНЫЙ ВХОД</button>
+        </div>
+      </details>
     </div>
   </div>
 
@@ -876,7 +920,7 @@
 // ============================================================
 
 // ── КОНФИГУРАЦИЯ ─────────────────────────────────────────────
-var API_URL = "https://script.google.com/macros/s/AKfycbwTBxHjxf4cOEH5KYmVI0QzbGxOaMHO1iV0lx3ATtjDZJ8PspsJ6LHF_hSakG_5E-T21A/exec";
+var API_URL = "https://script.google.com/macros/s/AKfycbzgCpF7_eofn2ibyyyFROpyXWYC1NEdrQLWJ5n3fMECXfRvuv0eoHK6ksFnWP8t1ulLeg/exec";
 var POLL_INTERVAL = 300; // мс (оптимизировано: было 200, но снаряд+анимация дают +800мс блокировки)
 
 // ── СОСТОЯНИЕ ПРИЛОЖЕНИЯ ─────────────────────────────────────
@@ -943,13 +987,17 @@ function clearSession() {
 }
 
 // ── INPUT LOCK ────────────────────────────────────────────────
-function lockInput() {
+function lockInput(noticeText) {
   state.inputLocked = true;
   document.getElementById("inputLock").classList.add("active");
+  var notice = document.getElementById("shootingNotice");
+  document.getElementById("shootingNoticeText").textContent = noticeText || "ВЫСТРЕЛ...";
+  notice.classList.add("show");
 }
 function unlockInput() {
   state.inputLocked = false;
   document.getElementById("inputLock").classList.remove("active");
+  document.getElementById("shootingNotice").classList.remove("show");
 }
 
 // ── ОБЪЯВЛЕНИЕ СМЕНЫ ХОДА ──────────────────────────────────
@@ -1248,17 +1296,19 @@ async function shoot(x, y) {
   }
 
   // Сразу блокируем
-  lockInput();
+  lockInput("ПРИЦЕЛИВАНИЕ...");
   setEnemyGridShootable(false);
 
   try {
     // Запрос и анимация снаряда параллельно
     var apiPromise = apiPost({ action: "move", playerId: state.playerId, x: x, y: y });
 
+    document.getElementById("shootingNoticeText").textContent = "ВЫСТРЕЛ!";
     // Запускаем анимацию снаряда (независимо от ответа API)
     var targetCell = getEnemyCellElement(x, y);
     await animateProjectile(targetCell);
 
+    document.getElementById("shootingNoticeText").textContent = "ОЖИДАНИЕ РЕЗУЛЬТАТА...";
     // Ждём ответ API (он обычно уже готов к этому моменту)
     var res = await apiPromise;
 
@@ -1297,79 +1347,125 @@ function getMyCellElement(x, y) {
   return document.querySelector('#myGrid .cell[data-x="' + x + '"][data-y="' + y + '"]');
 }
 
-// ── АНИМАЦИЯ СНАРЯДА ─────────────────────────────────────────
-// Рисует параболическую траекторию снаряда на canvas
+// ── АНИМАЦИЯ СНАРЯДА (трассирующий снаряд) ──────────────────
 function animateProjectile(targetCell) {
   return new Promise(function(resolve) {
-    var canvas  = document.getElementById("projectileCanvas");
-    var ctx     = canvas.getContext("2d");
+    var canvas = document.getElementById("projectileCanvas");
+    var ctx    = canvas.getContext("2d");
     canvas.width  = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    // Начало: статус-бар (позиция "вашего хода")
-    var statusEl = document.getElementById("statusTurn");
-    var startRect = statusEl.getBoundingClientRect();
-    var sx = startRect.left + startRect.width / 2;
+    if (!targetCell) { resolve(); return; }
+
+    // Старт — центр панели хода (баннер)
+    var badge = document.getElementById("turnBadge");
+    var startRect = badge.getBoundingClientRect();
+    var sx = startRect.left + startRect.width  / 2;
     var sy = startRect.top  + startRect.height / 2;
 
-    // Конец: центр целевой клетки
-    if (!targetCell) { resolve(); return; }
+    // Финиш — центр целевой клетки
     var endRect = targetCell.getBoundingClientRect();
     var ex = endRect.left + endRect.width  / 2;
     var ey = endRect.top  + endRect.height / 2;
 
-    // Контрольная точка параболы (выше прямой)
+    // Дуга: контрольная точка чуть выше средней линии
     var cpx = (sx + ex) / 2;
-    var cpy = Math.min(sy, ey) - Math.max(100, Math.abs(ey - sy) * 0.6);
+    var cpy = Math.min(sy, ey) - Math.max(80, Math.abs(ey - sy) * 0.45);
 
-    var DURATION = 420; // мс полёта
+    var DURATION = 380;
     var start = null;
-    var trail = []; // след снаряда
+
+    // История позиций для линии следа
+    var history = [];
+    var TRAIL_LEN = 14;
 
     function bezier(t, p0, p1, p2) {
-      var mt = 1 - t;
-      return mt * mt * p0 + 2 * mt * t * p1 + t * t * p2;
+      var m = 1 - t;
+      return m * m * p0 + 2 * m * t * p1 + t * t * p2;
+    }
+
+    // Угол касательной для ориентации снаряда
+    function tangentAngle(t, sx, cpx, ex, sy, cpy, ey) {
+      var dt = 0.01;
+      var t2 = Math.min(t + dt, 1);
+      var dx = bezier(t2, sx, cpx, ex) - bezier(t, sx, cpx, ex);
+      var dy = bezier(t2, sy, cpy, ey) - bezier(t, sy, cpy, ey);
+      return Math.atan2(dy, dx);
     }
 
     function frame(ts) {
       if (!start) start = ts;
       var t = Math.min((ts - start) / DURATION, 1);
 
-      // Текущая позиция снаряда
       var cx = bezier(t, sx, cpx, ex);
       var cy = bezier(t, sy, cpy, ey);
+      var angle = tangentAngle(t, sx, cpx, ex, sy, cpy, ey);
 
-      trail.push({ x: cx, y: cy, t: t });
-      // Ограничиваем длину следа
-      if (trail.length > 18) trail.shift();
+      history.push({ x: cx, y: cy });
+      if (history.length > TRAIL_LEN) history.shift();
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Рисуем след
-      for (var i = 0; i < trail.length; i++) {
-        var alpha = (i / trail.length) * 0.7;
-        var radius = (i / trail.length) * 5;
-        ctx.beginPath();
-        ctx.arc(trail[i].x, trail[i].y, radius, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255,200,80," + alpha + ")";
-        ctx.fill();
+      // ── Рисуем линию следа (градиент от прозрачного к яркому) ──
+      if (history.length > 1) {
+        for (var i = 1; i < history.length; i++) {
+          var frac = i / history.length;
+          var lineW = frac * 2.5;
+          var alpha = frac * 0.65;
+
+          ctx.beginPath();
+          ctx.moveTo(history[i-1].x, history[i-1].y);
+          ctx.lineTo(history[i].x, history[i].y);
+          ctx.strokeStyle = "rgba(180,220,255," + alpha + ")";
+          ctx.lineWidth   = lineW;
+          ctx.lineCap     = "round";
+          ctx.stroke();
+        }
       }
 
-      // Рисуем сам снаряд
-      var grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, 8);
-      grd.addColorStop(0, "rgba(255,255,255,1)");
-      grd.addColorStop(0.4, "rgba(255,180,40,0.9)");
-      grd.addColorStop(1, "rgba(255,80,0,0)");
+      // ── Рисуем сам снаряд — вытянутый эллипс, ориентирован по движению ──
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+
+      // Тело снаряда (вытянутый)
+      var bLen = 9, bRad = 2.5;
+      var grad = ctx.createLinearGradient(-bLen, 0, bLen, 0);
+      grad.addColorStop(0,   "rgba(140,200,255,0)");
+      grad.addColorStop(0.3, "rgba(200,230,255,0.7)");
+      grad.addColorStop(0.7, "rgba(255,255,255,1)");
+      grad.addColorStop(1,   "rgba(255,255,255,0.9)");
+
       ctx.beginPath();
-      ctx.arc(cx, cy, 8, 0, Math.PI * 2);
-      ctx.fillStyle = grd;
+      ctx.ellipse(0, 0, bLen, bRad, 0, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
       ctx.fill();
+
+      // Яркий носик
+      ctx.beginPath();
+      ctx.arc(bLen - 1, 0, bRad * 0.7, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255,1)";
+      ctx.fill();
+
+      ctx.restore();
 
       if (t < 1) {
         requestAnimationFrame(frame);
       } else {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        resolve();
+        // Небольшая вспышка на финише
+        var gr = ctx.createRadialGradient(ex, ey, 0, ex, ey, 18);
+        gr.addColorStop(0,   "rgba(255,255,255,0.9)");
+        gr.addColorStop(0.4, "rgba(180,220,255,0.5)");
+        gr.addColorStop(1,   "rgba(100,160,255,0)");
+        ctx.beginPath();
+        ctx.arc(ex, ey, 18, 0, Math.PI * 2);
+        ctx.fillStyle = gr;
+        ctx.fill();
+
+        setTimeout(function() {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          resolve();
+        }, 80);
       }
     }
 
@@ -1431,9 +1527,47 @@ function applyLocalShot(x, y, result) {
     else                       cell.classList.add("miss");
   }
 
+  // При потоплении — обводим все соседние незатронутые клетки точками промаха
+  if (result === "sunk") {
+    markSunkNeighbors(shots);
+  }
+
   // Журнал
   var resText = result === "hit" ? "Попадание" : result === "sunk" ? "Потоплен" : "Промах";
   addLog("Вы → " + COL_LABELS[x] + ROW_LABELS[y] + ": " + resText, result);
+}
+
+// ── ПОМЕТИТЬ СОСЕДЕЙ ПОТОПЛЕННОГО КОРАБЛЯ ────────────────────
+// Находим весь корабль по цепочке hit/sunk и обводим периметр промахами
+function markSunkNeighbors(shots) {
+  // Строим карту выстрелов
+  var shotMap = {};
+  shots.forEach(function(s) { shotMap[s.y + "_" + s.x] = s.result; });
+
+  // Находим все клетки корабля (sunk)
+  var sunkCells = shots.filter(function(s) { return s.result === "sunk"; });
+
+  // Для каждой sunk-клетки обходим соседей (включая диагонали)
+  sunkCells.forEach(function(sc) {
+    for (var dy = -1; dy <= 1; dy++) {
+      for (var dx = -1; dx <= 1; dx++) {
+        if (dy === 0 && dx === 0) continue;
+        var nx = sc.x + dx, ny = sc.y + dy;
+        if (nx < 0 || nx > 9 || ny < 0 || ny > 9) continue;
+        var key = ny + "_" + nx;
+        if (shotMap[key]) continue; // уже есть выстрел
+
+        // Добавляем фантомный промах
+        shotMap[key] = "miss";
+        shots.push({ x: nx, y: ny, result: "miss" });
+
+        var cell = getEnemyCellElement(nx, ny);
+        if (cell && !cell.classList.contains("hit") && !cell.classList.contains("sunk") && !cell.classList.contains("miss")) {
+          cell.className = "cell enemy-cell miss";
+        }
+      }
+    }
+  });
 }
 
 // ── ПЕРЕКЛЮЧЕНИЕ ХОДА ПОСЛЕ ВЫСТРЕЛА ─────────────────────────
@@ -1609,14 +1743,31 @@ function renderEnemyBoard(gs) {
   var shotMap = {};
   if (myShots) myShots.forEach(function(s){ shotMap[s.y+"_"+s.x] = s.result; });
 
+  // Добавляем фантомные промахи вокруг потопленных кораблей
+  if (myShots) {
+    var sunkCells = myShots.filter(function(s){ return s.result === "sunk"; });
+    sunkCells.forEach(function(sc) {
+      for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+          if (dy === 0 && dx === 0) continue;
+          var nx = sc.x + dx, ny = sc.y + dy;
+          if (nx < 0 || nx > 9 || ny < 0 || ny > 9) continue;
+          var key = ny + "_" + nx;
+          if (!shotMap[key]) shotMap[key] = "miss-border";
+        }
+      }
+    });
+  }
+
   var cells = document.querySelectorAll("#enemyGrid .cell");
   cells.forEach(function(cell) {
     var x = parseInt(cell.dataset.x), y = parseInt(cell.dataset.y);
     var shot = shotMap[y+"_"+x];
     cell.className = "cell enemy-cell";
-    if      (shot === "sunk") cell.classList.add("sunk");
-    else if (shot === "hit")  cell.classList.add("hit");
-    else if (shot === "miss") cell.classList.add("miss");
+    if      (shot === "sunk")        cell.classList.add("sunk");
+    else if (shot === "hit")         cell.classList.add("hit");
+    else if (shot === "miss")        cell.classList.add("miss");
+    else if (shot === "miss-border") cell.classList.add("miss");
   });
 }
 
