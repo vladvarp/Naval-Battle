@@ -34,10 +34,13 @@ function doPost(e) {
 
   var action = data.action || "";
   try {
-    if (action === "join")       return jsonResponse(joinGame(data));
-    if (action === "forceJoin")  return jsonResponse(forceJoin(data));
+    if (action === "join")          return jsonResponse(joinGame(data));
+    if (action === "forceJoin")   return jsonResponse(forceJoin(data));
     if (action === "move")       return jsonResponse(makeMove(data));
     if (action === "restart")    return jsonResponse(restartGame(data));
+    if (action === "acceptTakeover") return jsonResponse(acceptTakeover(data));
+    if (action === "denyTakeover")  return jsonResponse(denyTakeover(data));
+    if (action === "leave")      return jsonResponse(leaveGame(data));
     return jsonResponse({ ok: false, error: "Неизвестное действие: " + action });
   } catch (err) {
     return jsonResponse({ ok: false, error: err.message });
@@ -78,6 +81,9 @@ function initSheets() {
     ss.appendRow(["winner",   ""]);         // playerId победителя
     ss.appendRow(["shotsP1",  "[]"]);       // выстрелы игрока 1 по полю игрока 2
     ss.appendRow(["shotsP2",  "[]"]);       // выстрелы игрока 2 по полю игрока 1
+    ss.appendRow(["pendingTakeover", ""]);   // playerId который хочет занять место
+    ss.appendRow(["takeoverSlot",   ""]);   // слот который хотят занять
+    ss.appendRow(["takeoverExpiresAt", ""]);// Unix timestamp когда истекает
   }
 
   // Лист журнала: время | playerId | nickname | x | y | результат
@@ -233,6 +239,7 @@ function joinGame(data) {
   if (!nickname) return { ok: false, error: "Введите никнейм" };
 
   var players = readPlayers();
+  var state = readState();
 
   // Если игрок уже в игре (переподключение)
   for (var i = 0; i < players.length; i++) {
@@ -240,7 +247,6 @@ function joinGame(data) {
       var now = new Date().toISOString();
       updatePlayerRow(players[i].row, players[i].nickname, players[i].slot,
                       players[i].shipBoard, now);
-      var state = readState();
       return {
         ok: true,
         playerId: players[i].playerId,
@@ -251,14 +257,61 @@ function joinGame(data) {
     }
   }
 
-  // Проверка: не больше 2 игроков
-  if (players.length >= 2) {
-    return { ok: false, error: "Игра заполнена. Используйте пароль для принудительного входа." };
+  // Определяем свободный слот (ищем слот без игрока)
+  var usedSlots = players.map(function(p) { return p.slot; });
+  var freeSlot = usedSlots.indexOf(1) === -1 ? 1 : usedSlots.indexOf(2) === -1 ? 2 : 0;
+
+  // Если уже 2 игрока - проверяем занятость слотов
+  if (players.length >= 2 && freeSlot === 0) {
+    // Проверяем если есть ожидающий захват
+    var pendingId = state.pendingTakeover || "";
+    var expireAt = parseInt(state.takeoverExpiresAt) || 0;
+    var nowSec = Math.floor(Date.now() / 1000);
+
+    // Если есть активное предложение и оно ещё не истекло
+    if (pendingId && expireAt > nowSec) {
+      return { 
+        ok: false, 
+        error: "Идёт попытка захвата. Подождите...", 
+        pendingTakeover: true 
+      };
+    }
+
+    // Все слоты заняты - предлагаем захватить место
+    // Если никто не хочет захватывать - ошибка
+    return { 
+      ok: false, 
+      error: "Игра заполнена. Используйте пароль для принудительного входа." 
+    };
   }
 
-  // Определяем слот
-  var usedSlots = players.map(function(p) { return p.slot; });
-  var slot = usedSlots.indexOf(1) === -1 ? 1 : 2;
+  // Если есть ожидающий захват и слот свободен - обрабатываем
+  var pendingId = state.pendingTakeover || "";
+  var expireAt = parseInt(state.takeoverExpiresAt) || 0;
+  var nowSec = Math.floor(Date.now() / 1000);
+  var targetSlot = parseInt(state.takeoverSlot) || 0;
+
+  // Если есть активное предложение - проверяем
+  if (pendingId && expireAt > nowSec && targetSlot > 0) {
+    // Предложение активно - новый игрок не может присоединиться
+    return { 
+      ok: false, 
+      error: "Идёт попытка занять место. Подождите " + (expireAt - nowSec) + "с...", 
+      pendingTakeover: true,
+      takeoverSlot: targetSlot,
+      takeoverExpiresAt: expireAt
+    };
+  }
+
+  // Используем свободный слот или слот из предложения
+  var slot = targetSlot > 0 && state.pendingTakeover ? targetSlot : freeSlot;
+
+  // Очищаем предложение захвата если было
+  if (state.pendingTakeover) {
+    writeStateKey("pendingTakeover", "");
+    writeStateKey("takeoverSlot", "");
+    writeStateKey("takeoverExpiresAt", "");
+  }
 
   var playerId  = generateId();
   var ships     = generateShips();
@@ -478,11 +531,223 @@ function isGameOver(board) {
   return true;
 }
 
+// ── ЗАПРОС НА ЗАХВАТ МЕСТА ────────────────────────────────
+function requestTakeover(data) {
+  initSheets();
+  var nickname = (data.nickname || "").trim();
+  var targetSlot = parseInt(data.slot) || 0;
+
+  if (!nickname) return { ok: false, error: "Введите никнейм" };
+  if (targetSlot !== 1 && targetSlot !== 2) return { ok: false, error: "Укажите слот 1 или 2" };
+
+  var players = readPlayers();
+  var state = readState();
+
+  // Проверяем занят ли слот
+  var currentPlayer = players.filter(function(p){ return p.slot === targetSlot; })[0];
+  if (!currentPlayer) {
+    // Слот свободен - просто занимаем
+    var playerId = generateId();
+    var ships = generateShips();
+    var shipStr = JSON.stringify(ships);
+    var now = new Date().toISOString();
+
+    var sheet = getSheet(SHEET_NAME_PLAYERS);
+    sheet.appendRow([playerId, nickname, targetSlot, shipStr, now]);
+
+    var updatedPlayers = readPlayers();
+    if (updatedPlayers.length === 2) {
+      var p1 = updatedPlayers.filter(function(p){ return p.slot === 1; })[0];
+      writeStateKey("phase", "playing");
+      writeStateKey("turn",  p1.playerId);
+      writeStateKey("winner", "");
+      writeStateKey("shotsP1", []);
+      writeStateKey("shotsP2", []);
+    }
+
+    return { ok: true, playerId: playerId, slot: targetSlot };
+  }
+
+  // Слот занят - проверяем истекло ли предыдущее предложение
+  var pendingId = state.pendingTakeover || "";
+  var expireAt = parseInt(state.takeoverExpiresAt) || 0;
+  var nowSec = Math.floor(Date.now() / 1000);
+
+  // Если предложение ещё активно - отклоняем
+  if (pendingId && expireAt > nowSec) {
+    return { 
+      ok: false, 
+      error: "Другой игрок уже пробует занять это место", 
+      pendingTakeover: true,
+      takeoverSlot: targetSlot,
+      takeoverExpiresAt: expireAt,
+      currentPlayer: currentPlayer.nickname
+    };
+  }
+
+  // Создаём новое предложение о захвате
+  var takeoverId = generateId();
+  var expiresAt = nowSec + 5; // 5 секунд
+
+  writeStateKey("pendingTakeover", takeoverId);
+  writeStateKey("takeoverSlot", targetSlot);
+  writeStateKey("takeoverExpiresAt", expiresAt.toString());
+
+  return {
+    ok: true,
+    takeoverRequested: true,
+    playerId: takeoverId,
+    slot: targetSlot,
+    expiresAt: expiresAt,
+    currentPlayer: currentPlayer.nickname,
+    message: "Ожидание ответа от текущего игрока..."
+  };
+}
+
+// ── ПРИНЯТЬ ЗАХВАТ ───────────────────────────────────────────
+function acceptTakeover(data) {
+  var playerId = data.playerId;
+  if (!playerId) return { ok: false, error: "Нет playerId" };
+
+  var players = readPlayers();
+  var state = readState();
+  var nowSec = Math.floor(Date.now() / 1000);
+
+  // Проверяем актуальность предложения
+  var pendingId = state.pendingTakeover || "";
+  var expireAt = parseInt(state.takeoverExpiresAt) || 0;
+
+  if (pendingId !== playerId || expireAt <= nowSec) {
+    // Предложение истекло или неверное
+    clearPendingTakeover();
+    return { ok: false, error: "Время вышло или запрос недействителен" };
+  }
+
+  // Получаем данные предложения
+  var targetSlot = parseInt(state.takeoverSlot) || 0;
+
+  // Находим текущего игрока на этом слоте
+  var currentPlayer = players.filter(function(p){ return p.slot === targetSlot; })[0];
+  if (!currentPlayer) {
+    clearPendingTakeover();
+    return { ok: false, error: "Слот уже свободен" };
+  }
+
+  // Удаляем текущего игрока
+  removePlayerRow(currentPlayer.row);
+
+  // Очищаем предложение
+  clearPendingTakeover();
+
+  // Добавляем нового игрока
+  var newId = generateId();
+  var ships = generateShips();
+  var shipStr = JSON.stringify(ships);
+  var now = new Date().toISOString();
+
+  var sheet = getSheet(SHEET_NAME_PLAYERS);
+  sheet.appendRow([newId, data.nickname || "Новый игрок", targetSlot, shipStr, now]);
+
+  // Сбрасываем игру если она была в процессе
+  if (state.phase === "playing") {
+    var updatedPlayers = readPlayers();
+    var p1 = updatedPlayers.filter(function(p){ return p.slot === 1; })[0];
+    if (p1) {
+      writeStateKey("turn", p1.playerId);
+    }
+    writeStateKey("shotsP1", []);
+    writeStateKey("shotsP2", []);
+    writeStateKey("phase", "playing");
+    writeStateKey("winner", "");
+  }
+
+  return {
+    ok: true,
+    slot: targetSlot,
+    playerId: newId,
+    kicked: currentPlayer.nickname,
+    message: "Вы заняли место игрока " + currentPlayer.nickname
+  };
+}
+
+// ── ОТКЛОНИТЬ ЗАХВАТ ────────────────────────────────────────
+function denyTakeover(data) {
+  var playerId = data.playerId;
+  if (!playerId) return { ok: false, error: "Нет playerId" };
+
+  var state = readState();
+  var nowSec = Math.floor(Date.now() / 1000);
+
+  // Проверяем актуальность предложения
+  var pendingId = state.pendingTakeover || "";
+  var expireAt = parseInt(state.takeoverExpiresAt) || 0;
+
+  if (pendingId !== playerId || expireAt <= nowSec) {
+    clearPendingTakeover();
+    return { ok: false, error: "Время вышло или запрос недействителен" };
+  }
+
+  // Просто очищаем предложение
+  clearPendingTakeover();
+
+  return {
+    ok: true,
+    message: "Вы отклонили запрос на захват"
+  };
+}
+
+// ── ЯВНЫЙ ВЫХОД ИГРОКА ────────────────────────────────────
+function leaveGame(data) {
+  var playerId = data.playerId;
+  if (!playerId) return { ok: false, error: "Нет playerId" };
+
+  var players = readPlayers();
+  var me = players.filter(function(p){ return p.playerId === playerId; })[0];
+
+  if (!me) return { ok: false, error: "Игрок не найден" };
+
+  // Удаляем игрока
+  removePlayerRow(me.row);
+
+  // Очищаем состояние если игра была
+  var state = readState();
+  if (state.phase === "playing") {
+    writeStateKey("phase", "waiting");
+    writeStateKey("turn", "");
+    writeStateKey("shotsP1", []);
+    writeStateKey("shotsP2", []);
+  }
+
+  // Очищаем предложение захвата
+  clearPendingTakeover();
+
+  return { ok: true, message: "Вы вышли из игры" };
+}
+
+// ── ОЧИСТИТЬ ПРЕДЛОЖЕНИЕ ЗАХВАТА ───────────────────────
+function clearPendingTakeover() {
+  writeStateKey("pendingTakeover", "");
+  writeStateKey("takeoverSlot", "");
+  writeStateKey("takeoverExpiresAt", "");
+}
+
 // ── ПОЛУЧЕНИЕ СОСТОЯНИЯ ИГРЫ ────────────────────────────────
 function getState(playerId) {
   initSheets();
   var state   = readState();
   var players = readPlayers();
+  var nowSec = Math.floor(Date.now() / 1000);
+
+  // Проверяем и очищаем истекшие предложения
+  var expireAt = parseInt(state.takeoverExpiresAt) || 0;
+  if (state.pendingTakeover && expireAt > 0 && expireAt <= nowSec) {
+    writeStateKey("pendingTakeover", "");
+    writeStateKey("takeoverSlot", "");
+    writeStateKey("takeoverExpiresAt", "");
+    state.pendingTakeover = "";
+    state.takeoverSlot = "";
+    state.takeoverExpiresAt = "";
+  }
 
   // Публичная информация об игроках
   var playersPublic = players.map(function(p) {
@@ -498,6 +763,15 @@ function getState(playerId) {
     shotsP1: state.shotsP1,
     shotsP2: state.shotsP2
   };
+
+  // Добавляем информацию о захвате если есть активное предложение
+  if (state.pendingTakeover && expireAt > nowSec) {
+    result.pendingTakeover = {
+      pendingTakeover: state.pendingTakeover,
+      slot: parseInt(state.takeoverSlot),
+      expiresAt: expireAt
+    };
+  }
 
   // Добавляем собственное поле кораблей если playerId передан
   if (playerId) {
