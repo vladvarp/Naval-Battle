@@ -2,997 +2,745 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NAVAL COMBAT</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#020d18">
+<title>МОРСКОЙ БОЙ</title>
 <style>
-  /* ── ШРИФТЫ ─────────────────────────────────────────── */
-  @import url('https://fonts.googleapis.com/css2?family=Russo+One&family=Share+Tech+Mono&display=swap');
+/* ─── ШРИФТЫ ─────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Russo+One&family=Share+Tech+Mono&display=swap');
 
-  /* ── ПЕРЕМЕННЫЕ ─────────────────────────────────────── */
-  :root {
-    --sea-deep:    #020d18;
-    --sea-mid:     #041f35;
-    --sea-light:   #073358;
-    --water:       #0a4975;
-    --wave:        #0e6ba8;
-    --foam:        #1a9fd4;
-    --ice:         #a8e4ff;
-    --white:       #e8f4ff;
-    --hit:         #ff4444;
-    --miss:        #3a7bd5;
-    --sunk:        #ff6b00;
-    --ship:        #2ecc71;
-    --ship-hit:    #ff4444;
-    --my-ship:     #27ae60;
-    --gold:        #f0c040;
-    --red:         #e74c3c;
-    --cell-size:   36px;
-    --gap:         2px;
-    --radius:      4px;
-  }
+/* ─── ПЕРЕМЕННЫЕ ─────────────────────────────────────────── */
+:root {
+  --sea-deep:  #020d18;
+  --sea-mid:   #041f35;
+  --sea-light: #073358;
+  --water:     #0a4975;
+  --wave:      #0e6ba8;
+  --foam:      #1a9fd4;
+  --ice:       #a8e4ff;
+  --white:     #e8f4ff;
+  --hit:       #ff4444;
+  --miss:      #3a7bd5;
+  --sunk:      #ff8c00;
+  --ship:      #2ecc71;
+  --gold:      #f0c040;
+  --red:       #e74c3c;
+  --cs: clamp(26px, 7.5vw, 36px); /* размер клетки — адаптивный */
+  --gap: 2px;
+  --r: 4px;
+}
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  body {
-    background: var(--sea-deep);
-    color: var(--white);
-    font-family: 'Share Tech Mono', monospace;
-    min-height: 100vh;
-    overflow-x: hidden;
-    background-image:
-      radial-gradient(ellipse at 20% 50%, rgba(6,60,120,0.3) 0%, transparent 60%),
-      radial-gradient(ellipse at 80% 20%, rgba(4,40,80,0.4) 0%, transparent 50%);
-  }
+html { font-size: 16px; -webkit-tap-highlight-color: transparent; }
 
-  /* ── АНИМАЦИИ ─────────────────────────────────────────── */
-  @keyframes wave {
-    0%, 100% { transform: translateY(0); }
-    50%       { transform: translateY(-4px); }
-  }
-  @keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 8px var(--foam); }
-    50%       { box-shadow: 0 0 20px var(--foam), 0 0 40px rgba(26,159,212,0.3); }
-  }
-  @keyframes hit-flash {
-    0%   { background: #ff8800; transform: scale(1.4); box-shadow: 0 0 20px #ff8800; }
-    40%  { background: var(--hit); transform: scale(1.1); }
-    100% { background: rgba(255,68,68,0.5); transform: scale(1); }
-  }
-  @keyframes miss-ripple {
-    0%   { transform: scale(0.5); opacity: 1; }
-    100% { transform: scale(2.5); opacity: 0; }
-  }
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-10px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0.3; }
-  }
-  @keyframes shake {
-    0%,100%  { transform: translate(0,0) rotate(0deg); }
-    10%      { transform: translate(-4px,-3px) rotate(-1deg); }
-    20%      { transform: translate(4px,3px) rotate(1deg); }
-    30%      { transform: translate(-4px,2px) rotate(0deg); }
-    40%      { transform: translate(4px,-2px) rotate(1deg); }
-    50%      { transform: translate(-3px,3px) rotate(-1deg); }
-    60%      { transform: translate(3px,-3px) rotate(0deg); }
-    70%      { transform: translate(-2px,2px) rotate(-1deg); }
-    80%      { transform: translate(2px,-2px) rotate(1deg); }
-    90%      { transform: translate(-1px,1px) rotate(0deg); }
-  }
-  @keyframes explosion-ring {
-    0%   { transform: scale(0); opacity: 1; }
-    100% { transform: scale(3); opacity: 0; }
-  }
-  @keyframes splash-ring {
-    0%   { transform: scale(0); opacity: 0.7; border-width: 3px; }
-    100% { transform: scale(2.5); opacity: 0; border-width: 1px; }
-  }
-  @keyframes board-slide-in-left {
-    from { opacity: 0; transform: translateX(-60px) scale(0.95); }
-    to   { opacity: 1; transform: translateX(0) scale(1); }
-  }
-  @keyframes board-slide-in-right {
-    from { opacity: 0; transform: translateX(60px) scale(0.95); }
-    to   { opacity: 1; transform: translateX(0) scale(1); }
-  }
-  @keyframes board-fade-out {
-    from { opacity: 1; transform: scale(1); }
-    to   { opacity: 0; transform: scale(0.92); }
-  }
-  @keyframes turn-badge-in {
-    0%   { transform: scale(0) rotate(-15deg); opacity: 0; }
-    60%  { transform: scale(1.15) rotate(3deg); opacity: 1; }
-    100% { transform: scale(1) rotate(0deg); opacity: 1; }
-  }
-  @keyframes projectile-trail {
-    0%   { opacity: 1; transform: scale(1); }
-    100% { opacity: 0; transform: scale(0.2); }
-  }
-  @keyframes sunk-pulse {
-    0%, 100% { box-shadow: 0 0 6px var(--sunk); }
-    50% { box-shadow: 0 0 18px var(--sunk), 0 0 30px rgba(255,107,0,0.4); }
-  }
+body {
+  background: var(--sea-deep);
+  color: var(--white);
+  font-family: 'Share Tech Mono', monospace;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background-image:
+    radial-gradient(ellipse at 20% 50%, rgba(6,60,120,.3) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 20%, rgba(4,40,80,.4) 0%, transparent 50%);
+}
 
-  /* ── ШАПКА ────────────────────────────────────────────── */
-  header {
-    text-align: center;
-    padding: 24px 20px 16px;
-    position: relative;
-    border-bottom: 1px solid rgba(26,159,212,0.2);
-  }
-  header::after {
-    content: '';
-    position: absolute;
-    bottom: -1px; left: 50%;
-    transform: translateX(-50%);
-    width: 200px; height: 1px;
-    background: linear-gradient(90deg, transparent, var(--foam), transparent);
-  }
-  .logo {
-    font-family: 'Russo One', sans-serif;
-    font-size: clamp(28px, 5vw, 48px);
-    letter-spacing: 6px;
-    color: var(--white);
-    text-shadow: 0 0 30px rgba(26,159,212,0.6), 0 0 60px rgba(26,159,212,0.2);
-    animation: wave 4s ease-in-out infinite;
-  }
-  .logo span { color: var(--foam); }
-  .subtitle {
-    font-size: 11px;
-    letter-spacing: 3px;
-    color: rgba(168,228,255,0.5);
-    margin-top: 4px;
-  }
+/* ─── АНИМАЦИИ ─────────────────────────────────────────── */
+@keyframes wave { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+@keyframes pulse-glow {
+  0%,100%{box-shadow:0 0 8px var(--foam)}
+  50%{box-shadow:0 0 20px var(--foam),0 0 40px rgba(26,159,212,.3)}
+}
+@keyframes fadeIn { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:translateY(0)} }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+@keyframes shake {
+  0%,100%{transform:translate(0,0)} 10%{transform:translate(-4px,-3px)}
+  20%{transform:translate(4px,3px)} 30%{transform:translate(-4px,2px)}
+  40%{transform:translate(4px,-2px)} 50%{transform:translate(-3px,3px)}
+  60%{transform:translate(3px,-3px)} 70%{transform:translate(-2px,2px)}
+  80%{transform:translate(2px,-2px)} 90%{transform:translate(-1px,1px)}
+}
+@keyframes hit-flash {
+  0%{background:#ff8800;transform:scale(1.4);box-shadow:0 0 20px #ff8800}
+  40%{background:var(--hit);transform:scale(1.1)}
+  100%{background:rgba(255,68,68,.5);transform:scale(1)}
+}
+@keyframes sunk-pulse {
+  0%,100%{box-shadow:0 0 6px var(--sunk)}
+  50%{box-shadow:0 0 18px var(--sunk),0 0 30px rgba(255,140,0,.4)}
+}
+@keyframes explosion-ring {
+  0%{transform:scale(0);opacity:1} 100%{transform:scale(3);opacity:0}
+}
+@keyframes splash-ring {
+  0%{transform:scale(0);opacity:.7;border-width:3px}
+  100%{transform:scale(2.5);opacity:0;border-width:1px}
+}
+@keyframes board-in-left {
+  from{opacity:0;transform:translateX(-50px) scale(.95)}
+  to{opacity:1;transform:translateX(0) scale(1)}
+}
+@keyframes board-in-right {
+  from{opacity:0;transform:translateX(50px) scale(.95)}
+  to{opacity:1;transform:translateX(0) scale(1)}
+}
+@keyframes badge-pop {
+  0%{transform:scale(0) rotate(-15deg);opacity:0}
+  60%{transform:scale(1.15) rotate(3deg);opacity:1}
+  100%{transform:scale(1) rotate(0);opacity:1}
+}
+@keyframes spin { to{transform:rotate(360deg)} }
+@keyframes opp-waiting {
+  0%,100%{opacity:.5;transform:scale(1)}
+  50%{opacity:1;transform:scale(1.03)}
+}
+@keyframes slide-up {
+  from{opacity:0;transform:translate(-50%,20px)}
+  to{opacity:1;transform:translate(-50%,0)}
+}
 
-  /* ── ОСНОВНОЙ КОНТЕЙНЕР ──────────────────────────────── */
-  .app {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 20px;
-  }
+/* ─── МАКЕТ ─────────────────────────────────────────────── */
+header {
+  text-align:center; padding:18px 16px 12px;
+  border-bottom:1px solid rgba(26,159,212,.2);
+  position:relative;
+}
+header::after {
+  content:''; position:absolute; bottom:-1px; left:50%;
+  transform:translateX(-50%); width:200px; height:1px;
+  background:linear-gradient(90deg,transparent,var(--foam),transparent);
+}
+.logo {
+  font-family:'Russo One',sans-serif;
+  font-size:clamp(24px,5vw,44px);
+  letter-spacing:6px;
+  text-shadow:0 0 30px rgba(26,159,212,.6);
+  animation:wave 4s ease-in-out infinite;
+}
+.logo span { color:var(--foam); }
+.subtitle { font-size:10px; letter-spacing:3px; color:rgba(168,228,255,.4); margin-top:3px; }
 
-  /* ── ЭКРАН ВХОДА ─────────────────────────────────────── */
-  #loginScreen {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 60vh;
-    gap: 20px;
-    animation: fadeIn 0.4s ease;
-  }
-  .login-card {
-    background: rgba(4,31,53,0.8);
-    border: 1px solid rgba(26,159,212,0.25);
-    border-radius: 12px;
-    padding: 36px 40px;
-    width: 100%;
-    max-width: 400px;
-    box-shadow: 0 8px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
-    position: relative;
-    overflow: hidden;
-  }
-  .login-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--foam), transparent);
-  }
-  .login-card h2 {
-    font-family: 'Russo One', sans-serif;
-    font-size: 16px;
-    letter-spacing: 3px;
-    color: var(--foam);
-    margin-bottom: 24px;
-    text-align: center;
-  }
+.app { max-width:600px; margin:0 auto; padding:16px; }
 
-  .field-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-bottom: 16px;
-  }
-  .field-group label {
-    font-size: 10px;
-    letter-spacing: 2px;
-    color: rgba(168,228,255,0.6);
-  }
-  input[type="text"],
-  input[type="password"],
-  input[type="number"] {
-    background: rgba(2,13,24,0.8);
-    border: 1px solid rgba(26,159,212,0.3);
-    border-radius: 6px;
-    color: var(--white);
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 14px;
-    padding: 10px 14px;
-    outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
-    width: 100%;
-  }
-  input:focus {
-    border-color: var(--foam);
-    box-shadow: 0 0 0 3px rgba(26,159,212,0.15);
-  }
+/* ─── ЭКРАНЫ ────────────────────────────────────────────── */
+.screen { display:none; animation:fadeIn .35s ease; }
+.screen.active { display:block; }
+#lobbyScreen.active { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:60vh; gap:16px; }
 
-  .hint { font-size: 10px; color: rgba(168,228,255,0.4); margin-top: 2px; }
+/* ─── КАРТОЧКА ───────────────────────────────────────────────── */
+.card {
+  background:rgba(4,31,53,.85);
+  border:1px solid rgba(26,159,212,.25);
+  border-radius:12px;
+  padding:28px 24px;
+  width:100%; max-width:400px;
+  box-shadow:0 8px 40px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.04);
+  position:relative; overflow:hidden;
+}
+.card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:1px;
+  background:linear-gradient(90deg,transparent,var(--foam),transparent);
+}
+.card h2 {
+  font-family:'Russo One',sans-serif; font-size:15px;
+  letter-spacing:3px; color:var(--foam);
+  margin-bottom:20px; text-align:center;
+}
 
-  /* ── КНОПКИ ──────────────────────────────────────────── */
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 11px 24px;
-    border: none;
-    border-radius: 6px;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 13px;
-    letter-spacing: 2px;
-    cursor: pointer;
-    transition: all 0.15s;
-    text-transform: uppercase;
-    width: 100%;
-  }
-  .btn-primary {
-    background: linear-gradient(135deg, var(--wave), var(--foam));
-    color: var(--sea-deep);
-    font-weight: bold;
-  }
-  .btn-primary:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 20px rgba(26,159,212,0.4);
-  }
-  .btn-danger {
-    background: linear-gradient(135deg, #8b0000, var(--red));
-    color: var(--white);
-  }
-  .btn-danger:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 20px rgba(231,76,60,0.4);
-  }
-  .btn-ghost {
-    background: rgba(26,159,212,0.1);
-    color: var(--foam);
-    border: 1px solid rgba(26,159,212,0.3);
-  }
-  .btn-ghost:hover:not(:disabled) { background: rgba(26,159,212,0.2); }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn-sm { padding: 7px 14px; font-size: 11px; width: auto; }
+/* ─── ПОЛЯ ФОРМЫ ──────────────────────────────────────── */
+.field-group { display:flex; flex-direction:column; gap:5px; margin-bottom:14px; }
+.field-group label { font-size:9px; letter-spacing:2px; color:rgba(168,228,255,.55); }
 
-  /* ── СООБЩЕНИЯ ───────────────────────────────────────── */
-  .message {
-    padding: 10px 16px;
-    border-radius: 6px;
-    font-size: 12px;
-    letter-spacing: 1px;
-    margin-top: 12px;
-    animation: fadeIn 0.3s ease;
-  }
-  .message-error   { background: rgba(231,76,60,0.15); border: 1px solid rgba(231,76,60,0.4); color: #ff8080; }
-  .message-success { background: rgba(46,204,113,0.12); border: 1px solid rgba(46,204,113,0.3); color: #7dffb3; }
-  .message-info    { background: rgba(26,159,212,0.12); border: 1px solid rgba(26,159,212,0.3); color: var(--foam); }
+input[type="text"] {
+  background:rgba(2,13,24,.85);
+  border:1px solid rgba(26,159,212,.3);
+  border-radius:6px; color:var(--white);
+  font-family:'Share Tech Mono',monospace; font-size:15px;
+  padding:12px 14px; outline:none; width:100%;
+  transition:border-color .2s, box-shadow .2s;
+  -webkit-appearance:none;
+}
+input:focus { border-color:var(--foam); box-shadow:0 0 0 3px rgba(26,159,212,.15); }
 
-  /* ── РАЗДЕЛИТЕЛЬ ─────────────────────────────────────── */
-  .divider {
-    display: flex; align-items: center; gap: 12px; margin: 20px 0;
-  }
-  .divider::before, .divider::after {
-    content: ''; flex: 1; height: 1px; background: rgba(26,159,212,0.2);
-  }
-  .divider span { font-size: 10px; letter-spacing: 2px; color: rgba(168,228,255,0.4); }
+/* ─── КНОПКИ ────────────────────────────────────────────── */
+.btn {
+  display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  padding:13px 20px; border:none; border-radius:8px;
+  font-family:'Share Tech Mono',monospace; font-size:12px;
+  letter-spacing:2px; cursor:pointer; transition:all .15s;
+  text-transform:uppercase; width:100%; min-height:46px;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.btn-primary { background:linear-gradient(135deg,var(--wave),var(--foam)); color:var(--sea-deep); font-weight:bold; }
+.btn-primary:active:not(:disabled) { transform:scale(.97); }
+.btn-primary:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 4px 20px rgba(26,159,212,.4); }
+.btn-danger  { background:linear-gradient(135deg,#8b0000,var(--red)); color:var(--white); }
+.btn-ghost   { background:rgba(26,159,212,.1); color:var(--foam); border:1px solid rgba(26,159,212,.3); }
+.btn-ghost:hover:not(:disabled) { background:rgba(26,159,212,.2); }
+.btn:disabled { opacity:.4; cursor:not-allowed; }
+.btn-sm { padding:9px 16px; font-size:10px; width:auto; min-height:36px; }
+.btn-row { display:flex; gap:10px; }
+.btn-row .btn { flex:1; }
 
-  /* ── ИГРОВОЙ ЭКРАН ───────────────────────────────────── */
-  #gameScreen { display: none; animation: fadeIn 0.4s ease; }
+/* ─── СООБЩЕНИЯ ───────────────────────────────────────────── */
+.msg { padding:9px 14px; border-radius:6px; font-size:11px; letter-spacing:1px;
+  margin-top:10px; animation:fadeIn .25s ease; }
+.msg-error   { background:rgba(231,76,60,.15); border:1px solid rgba(231,76,60,.4); color:#ff9090; }
+.msg-success { background:rgba(46,204,113,.12); border:1px solid rgba(46,204,113,.3); color:#7dffb3; }
+.msg-info    { background:rgba(26,159,212,.12); border:1px solid rgba(26,159,212,.3); color:var(--foam); }
 
-  /* ── СТАТУС-БАР ──────────────────────────────────────── */
-  .status-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: rgba(4,31,53,0.7);
-    border: 1px solid rgba(26,159,212,0.2);
-    border-radius: 8px;
-    padding: 12px 20px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-  .status-item { display: flex; flex-direction: column; gap: 2px; }
-  .status-label { font-size: 9px; letter-spacing: 2px; color: rgba(168,228,255,0.4); }
-  .status-value { font-size: 14px; color: var(--white); letter-spacing: 1px; }
-  .status-value.active { color: var(--foam); animation: blink 1.5s ease-in-out infinite; }
-  .status-phase { display: flex; align-items: center; gap: 8px; }
-  .phase-dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: var(--foam);
-    animation: pulse-glow 2s ease-in-out infinite;
-  }
-  .phase-dot.waiting  { background: var(--gold); }
-  .phase-dot.playing  { background: var(--ship); }
-  .phase-dot.finished { background: var(--red); animation: none; }
+/* ─── СПИСОК ЛОББИ ─────────────────────────────────────────── */
+.lobby-list { display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
+.lobby-room {
+  display:flex; align-items:center; justify-content:space-between;
+  background:rgba(7,51,88,.5); border:1px solid rgba(26,159,212,.2);
+  border-radius:8px; padding:11px 14px; gap:10px;
+  transition:border-color .2s;
+}
+.lobby-room:hover { border-color:rgba(26,159,212,.5); }
+.lobby-room-nick { font-size:13px; color:var(--white); }
+.lobby-room-meta { font-size:9px; letter-spacing:1px; color:rgba(168,228,255,.4); margin-top:2px; }
+.lobby-join-btn { flex-shrink:0; }
 
-  /* ── ПОЛЕ-ПЕРЕКЛЮЧАТЕЛЬ ──────────────────────────────── */
-  /* Арена — одно поле показывается за раз (кинематографичный режим) */
-  .arena {
-    position: relative;
-    margin-bottom: 20px;
-  }
+.divider {
+  display:flex; align-items:center; gap:10px; margin:16px 0;
+}
+.divider::before,.divider::after { content:''; flex:1; height:1px; background:rgba(26,159,212,.2); }
+.divider span { font-size:9px; letter-spacing:2px; color:rgba(168,228,255,.35); }
 
-  /* Надпись с чьим ходом */
-  .turn-banner {
-    text-align: center;
-    margin-bottom: 12px;
-    min-height: 36px;
-  }
-  .turn-badge {
-    display: inline-block;
-    font-family: 'Russo One', sans-serif;
-    font-size: 13px;
-    letter-spacing: 3px;
-    padding: 6px 20px;
-    border-radius: 20px;
-    animation: turn-badge-in 0.4s cubic-bezier(0.34,1.56,0.64,1);
-  }
-  .turn-badge.my-turn {
-    background: linear-gradient(135deg, rgba(46,204,113,0.2), rgba(46,204,113,0.1));
-    border: 1px solid rgba(46,204,113,0.5);
-    color: #7dffb3;
-    text-shadow: 0 0 10px rgba(46,204,113,0.4);
-  }
-  .turn-badge.enemy-turn {
-    background: linear-gradient(135deg, rgba(231,76,60,0.2), rgba(231,76,60,0.1));
-    border: 1px solid rgba(231,76,60,0.4);
-    color: #ff9999;
-    text-shadow: 0 0 10px rgba(231,76,60,0.3);
-  }
+/* ─── СПИННЕР ────────────────────────────────────────────── */
+.spinner {
+  width:20px; height:20px; border:2px solid rgba(26,159,212,.3);
+  border-top-color:var(--foam); border-radius:50%;
+  animation:spin .7s linear infinite; margin:0 auto;
+}
 
-  /* Контейнер двух полей — показываем/скрываем */
-  .boards-stage {
-    display: flex;
-    justify-content: center;
-    position: relative;
-  }
-  .board-panel {
-    background: rgba(4,31,53,0.6);
-    border: 1px solid rgba(26,159,212,0.2);
-    border-radius: 10px;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    position: relative;
-    overflow: visible; /* нужно для снаряда */
-    transition: border-color 0.3s;
-  }
-  .board-panel::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(26,159,212,0.4), transparent);
-  }
-  .board-panel.active-mine {
-    border-color: rgba(46,204,113,0.4);
-  }
-  .board-panel.active-mine::before {
-    background: linear-gradient(90deg, transparent, rgba(46,204,113,0.6), transparent);
-  }
-  .board-panel.active-enemy {
-    border-color: rgba(231,76,60,0.4);
-  }
-  .board-panel.active-enemy::before {
-    background: linear-gradient(90deg, transparent, rgba(231,76,60,0.5), transparent);
-  }
+/* ─── ИГРОВОЙ ЭКРАН ────────────────────────────────────────── */
+#gameScreen.active { display:block; }
 
-  /* Оверлей затемнения на неактивном поле */
-  .board-dimmed {
-    position: absolute;
-    inset: 0;
-    background: rgba(2,13,24,0.55);
-    border-radius: 10px;
-    pointer-events: none;
-    backdrop-filter: blur(1px);
-    z-index: 5;
-    display: none;
-  }
+/* ─── СТАТУС-БАР ─────────────────────────────────────────── */
+.status-bar {
+  display:flex; align-items:center; justify-content:space-between;
+  background:rgba(4,31,53,.7); border:1px solid rgba(26,159,212,.2);
+  border-radius:8px; padding:10px 16px; margin-bottom:14px; gap:10px;
+  flex-wrap:wrap;
+}
+.status-item { display:flex; flex-direction:column; gap:2px; }
+.status-label { font-size:8px; letter-spacing:2px; color:rgba(168,228,255,.4); }
+.status-value { font-size:13px; color:var(--white); letter-spacing:1px; }
+.status-value.active { color:var(--foam); animation:blink 1.5s ease-in-out infinite; }
+.phase-dot {
+  width:7px; height:7px; border-radius:50%;
+  background:var(--foam); animation:pulse-glow 2s ease-in-out infinite;
+  display:inline-block; margin-right:6px;
+}
+.phase-dot.waiting { background:var(--gold); }
+.phase-dot.playing { background:var(--ship); }
+.phase-dot.finished{ background:var(--red); animation:none; }
 
-  /* Анимации появления/скрытия полей */
-  .board-entering-left  { animation: board-slide-in-left  0.35s cubic-bezier(0.22,1,0.36,1) both; }
-  .board-entering-right { animation: board-slide-in-right 0.35s cubic-bezier(0.22,1,0.36,1) both; }
-  .board-leaving        { animation: board-fade-out       0.25s ease both; }
+/* ─── БАННЕР ХОДА ────────────────────────────────────────── */
+.turn-banner { text-align:center; margin-bottom:10px; min-height:34px; }
+.turn-badge {
+  display:inline-block; font-family:'Russo One',sans-serif;
+  font-size:12px; letter-spacing:3px; padding:6px 18px;
+  border-radius:20px; animation:badge-pop .4s cubic-bezier(.34,1.56,.64,1);
+}
+.turn-badge.my-turn {
+  background:linear-gradient(135deg,rgba(46,204,113,.2),rgba(46,204,113,.1));
+  border:1px solid rgba(46,204,113,.5); color:#7dffb3;
+  text-shadow:0 0 10px rgba(46,204,113,.4);
+}
+.turn-badge.enemy-turn {
+  background:linear-gradient(135deg,rgba(231,76,60,.2),rgba(231,76,60,.1));
+  border:1px solid rgba(231,76,60,.4); color:#ff9999;
+  text-shadow:0 0 10px rgba(231,76,60,.3);
+}
 
-  .board-title { font-family: 'Russo One', sans-serif; font-size: 12px; letter-spacing: 3px; color: rgba(168,228,255,0.7); }
-  .board-title.enemy { color: var(--red); }
+/* ─── ИНДИКАТОР ХОДА ПРОТИВНИКА ───────────────────────── */
+.thinking-bar {
+  display:none; align-items:center; justify-content:center; gap:10px;
+  padding:10px; margin-bottom:12px;
+  background:rgba(231,76,60,.08); border:1px solid rgba(231,76,60,.2);
+  border-radius:8px; animation:opp-waiting 1.8s ease-in-out infinite;
+}
+.thinking-bar.show { display:flex; }
+.thinking-bar .think-dots span {
+  display:inline-block; width:6px; height:6px; border-radius:50%;
+  background:rgba(255,153,153,.7); margin:0 2px;
+  animation:blink 1s ease-in-out infinite;
+}
+.thinking-bar .think-dots span:nth-child(2){ animation-delay:.2s; }
+.thinking-bar .think-dots span:nth-child(3){ animation-delay:.4s; }
+.thinking-bar-text { font-size:11px; letter-spacing:2px; color:rgba(255,153,153,.8); }
 
-  /* ── СЕТКА ПОЛЯ ──────────────────────────────────────── */
-  .grid-wrapper { display: flex; gap: 0; }
-  .grid-labels-col {
-    display: flex; flex-direction: column;
-    gap: var(--gap);
-    margin-top: calc(var(--cell-size) + var(--gap));
-    margin-right: 4px;
-  }
-  .grid-labels-row {
-    display: flex; gap: var(--gap);
-    margin-left: 0; margin-bottom: 4px;
-    padding-left: 24px;
-  }
-  .grid-label {
-    width: var(--cell-size); height: var(--cell-size);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 10px; color: rgba(168,228,255,0.35); letter-spacing: 0;
-  }
-  .grid-label-side {
-    width: 20px; height: var(--cell-size);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 10px; color: rgba(168,228,255,0.35);
-  }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(10, var(--cell-size));
-    grid-template-rows:    repeat(10, var(--cell-size));
-    gap: var(--gap);
-    position: relative; /* для снаряда */
-  }
+/* ─── ПОЛЯ ─────────────────────────────────────────────── */
+.boards-stage { display:flex; justify-content:center; }
+.board-panel {
+  background:rgba(4,31,53,.6); border:1px solid rgba(26,159,212,.2);
+  border-radius:10px; padding:14px;
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  position:relative; overflow:visible; transition:border-color .3s;
+}
+.board-panel::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:1px;
+  background:linear-gradient(90deg,transparent,rgba(26,159,212,.4),transparent);
+}
+.board-panel.active-mine { border-color:rgba(46,204,113,.4); }
+.board-panel.active-mine::before { background:linear-gradient(90deg,transparent,rgba(46,204,113,.6),transparent); }
+.board-panel.active-enemy { border-color:rgba(231,76,60,.4); }
+.board-panel.active-enemy::before { background:linear-gradient(90deg,transparent,rgba(231,76,60,.5),transparent); }
 
-  /* ── КЛЕТКИ ПОЛЯ ─────────────────────────────────────── */
-  .cell {
-    width: var(--cell-size); height: var(--cell-size);
-    border-radius: var(--radius);
-    background: rgba(7,51,88,0.5);
-    border: 1px solid rgba(10,73,117,0.6);
-    transition: background 0.15s, transform 0.1s, border-color 0.15s;
-    cursor: default;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 14px;
-    position: relative;
-    overflow: hidden;
-  }
-  .cell.enemy-cell.shootable { cursor: crosshair; }
-  .cell.enemy-cell.shootable:hover {
-    background: rgba(26,159,212,0.25);
-    border-color: var(--foam);
-    transform: scale(1.08);
-    z-index: 2;
-  }
-  .cell.ship {
-    background: rgba(39,174,96,0.4);
-    border-color: rgba(46,204,113,0.6);
-  }
-  .cell.ship::after {
-    content: '';
-    position: absolute; inset: 3px; border-radius: 2px;
-    background: rgba(46,204,113,0.3);
-  }
-  .cell.hit {
-    background: rgba(255,68,68,0.5);
-    border-color: var(--hit);
-    animation: hit-flash 0.4s ease forwards;
-  }
-  .cell.hit::after { content: '✕'; color: var(--hit); font-size: 18px; font-weight: bold; text-shadow: 0 0 8px var(--hit); }
-  .cell.sunk {
-    background: rgba(255,107,0,0.45);
-    border-color: var(--sunk);
-    animation: sunk-pulse 2s ease-in-out infinite;
-  }
-  .cell.sunk::after { content: '✕'; color: var(--sunk); font-size: 18px; font-weight: bold; text-shadow: 0 0 10px var(--sunk); }
-  .cell.miss {
-    background: rgba(58,123,213,0.2);
-    border-color: rgba(58,123,213,0.5);
-  }
-  .cell.miss::after { content: '·'; color: rgba(168,228,255,0.6); font-size: 22px; line-height: 1; }
-  .cell.my-hit { background: rgba(255,68,68,0.35); border-color: var(--hit); }
-  .cell.my-hit::after { content: '✕'; color: var(--hit); font-size: 18px; }
-  .cell.my-sunk { background: rgba(255,107,0,0.35); border-color: var(--sunk); }
-  .cell.my-sunk::after { content: '✕'; color: var(--sunk); font-size: 16px; }
+.board-entering-left  { animation:board-in-left  .35s cubic-bezier(.22,1,.36,1) both; }
+.board-entering-right { animation:board-in-right .35s cubic-bezier(.22,1,.36,1) both; }
 
-  /* Подсветка цели (hover preview при наведении) */
-  .cell.target-preview {
-    background: rgba(255,200,0,0.2) !important;
-    border-color: rgba(255,200,0,0.6) !important;
-    box-shadow: inset 0 0 8px rgba(255,200,0,0.3);
-  }
+.board-title { font-family:'Russo One',sans-serif; font-size:11px; letter-spacing:3px; color:rgba(168,228,255,.65); }
+.board-title.enemy { color:var(--red); }
+.board-shake { animation:shake .45s cubic-bezier(.36,.07,.19,.97) both; }
 
-  /* ── СНАРЯД ──────────────────────────────────────────── */
-  #projectileCanvas {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    pointer-events: none;
-    z-index: 1000;
-  }
+/* ─── СЕТКА ───────────────────────────────────────────────── */
+.grid-wrapper { display:flex; gap:0; }
+.grid-labels-col {
+  display:flex; flex-direction:column; gap:var(--gap);
+  margin-top:calc(var(--cs) + var(--gap)); margin-right:3px;
+}
+.grid-labels-row {
+  display:flex; gap:var(--gap); margin-bottom:3px; padding-left:22px;
+}
+.grid-label {
+  width:var(--cs); height:var(--cs);
+  display:flex; align-items:center; justify-content:center;
+  font-size:9px; color:rgba(168,228,255,.3);
+}
+.grid-label-side {
+  width:18px; height:var(--cs);
+  display:flex; align-items:center; justify-content:center;
+  font-size:9px; color:rgba(168,228,255,.3);
+}
+.grid {
+  display:grid;
+  grid-template-columns:repeat(10,var(--cs));
+  grid-template-rows:   repeat(10,var(--cs));
+  gap:var(--gap); position:relative;
+}
 
-  /* ── ЭФФЕКТ ПОПАДАНИЯ ────────────────────────────────── */
-  .fx-explosion {
-    position: absolute;
-    width: 100%; height: 100%;
-    top: 0; left: 0;
-    border-radius: 50%;
-    background: radial-gradient(circle, #fff 0%, #ff8800 30%, rgba(255,68,0,0) 70%);
-    animation: explosion-ring 0.5s ease-out forwards;
-    pointer-events: none;
-    z-index: 10;
-  }
-  .fx-splash {
-    position: absolute;
-    width: 100%; height: 100%;
-    top: 0; left: 0;
-    border-radius: 50%;
-    border: 3px solid rgba(100,180,255,0.8);
-    animation: splash-ring 0.6s ease-out forwards;
-    pointer-events: none;
-    z-index: 10;
-  }
+/* ─── КЛЕТКИ ──────────────────────────────────────────────── */
+.cell {
+  width:var(--cs); height:var(--cs);
+  border-radius:var(--r);
+  background:rgba(7,51,88,.5); border:1px solid rgba(10,73,117,.6);
+  transition:background .15s, transform .1s, border-color .15s;
+  cursor:default; display:flex; align-items:center; justify-content:center;
+  font-size:calc(var(--cs) * 0.45); position:relative; overflow:hidden;
+  touch-action:manipulation;
+}
+.cell.enemy-cell.shootable { cursor:crosshair; }
+.cell.enemy-cell.shootable:hover,
+.cell.enemy-cell.shootable:active {
+  background:rgba(26,159,212,.25); border-color:var(--foam);
+  transform:scale(1.1); z-index:2;
+}
+.cell.ship {
+  background:rgba(39,174,96,.4); border-color:rgba(46,204,113,.6);
+}
+.cell.ship::after {
+  content:''; position:absolute; inset:3px; border-radius:2px;
+  background:rgba(46,204,113,.3);
+}
+.cell.hit {
+  background:rgba(255,68,68,.5); border-color:var(--hit);
+  animation:hit-flash .4s ease forwards;
+}
+.cell.hit::after { content:'✕'; color:var(--hit); font-weight:bold; text-shadow:0 0 8px var(--hit); }
+.cell.sunk {
+  background:rgba(255,140,0,.45); border-color:var(--sunk);
+  animation:sunk-pulse 2s ease-in-out infinite;
+}
+.cell.sunk::after { content:'✕'; color:var(--sunk); font-weight:bold; text-shadow:0 0 10px var(--sunk); }
+.cell.miss {
+  background:rgba(58,123,213,.2); border-color:rgba(58,123,213,.5);
+}
+.cell.miss::after { content:'·'; color:rgba(168,228,255,.6); font-size:calc(var(--cs) * 0.65); line-height:1; }
+/* My board damage states */
+.cell.my-hit  { background:rgba(255,68,68,.35);  border-color:var(--hit); }
+.cell.my-hit::after  { content:'✕'; color:var(--hit); }
+.cell.my-sunk { background:rgba(255,140,0,.35); border-color:var(--sunk); }
+.cell.my-sunk::after { content:'✕'; color:var(--sunk); }
 
-  /* Встряска поля */
-  .board-shake { animation: shake 0.45s cubic-bezier(0.36,0.07,0.19,0.97) both; }
+/* ─── CANVAS / ЭФФЕКТЫ ────────────────────────────────────────── */
+#projectileCanvas {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  pointer-events:none; z-index:1000;
+}
+.fx-explosion {
+  position:absolute; width:100%; height:100%; top:0; left:0;
+  border-radius:50%;
+  background:radial-gradient(circle,#fff 0%,#ff8800 30%,rgba(255,68,0,0) 70%);
+  animation:explosion-ring .5s ease-out forwards;
+  pointer-events:none; z-index:10;
+}
+.fx-splash {
+  position:absolute; width:100%; height:100%; top:0; left:0;
+  border-radius:50%; border:3px solid rgba(100,180,255,.8);
+  animation:splash-ring .6s ease-out forwards;
+  pointer-events:none; z-index:10;
+}
 
-  /* ── УВЕДОМЛЕНИЕ «ВАШ ХОД» / «ХОД ПРОТИВНИКА» ─────── */
-  .phase-announcement {
-    position: fixed;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%) scale(0);
-    z-index: 500;
-    background: rgba(4,31,53,0.97);
-    border: 2px solid var(--foam);
-    border-radius: 16px;
-    padding: 28px 44px;
-    text-align: center;
-    font-family: 'Russo One', sans-serif;
-    font-size: 22px;
-    letter-spacing: 4px;
-    pointer-events: none;
-    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), opacity 0.3s;
-    opacity: 0;
-    white-space: nowrap;
-  }
-  .phase-announcement.show {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 1;
-  }
-  .phase-announcement.hide {
-    transform: translate(-50%, -50%) scale(0.8);
-    opacity: 0;
-    transition: transform 0.2s ease, opacity 0.2s ease;
-  }
-  .phase-announcement.my  { border-color: rgba(46,204,113,0.7); color: #7dffb3; text-shadow: 0 0 20px rgba(46,204,113,0.5); }
-  .phase-announcement.enemy { border-color: rgba(231,76,60,0.6); color: #ff9999; text-shadow: 0 0 20px rgba(231,76,60,0.4); }
+/* ─── ОБЪЯВЛЕНИЕ ФАЗЫ ─────────────────────────────────── */
+.phase-announcement {
+  position:fixed; top:50%; left:50%;
+  transform:translate(-50%,-50%) scale(0);
+  z-index:500;
+  background:rgba(4,31,53,.97); border:2px solid var(--foam);
+  border-radius:16px; padding:22px 36px; text-align:center;
+  font-family:'Russo One',sans-serif;
+  font-size:clamp(16px,4vw,22px); letter-spacing:4px;
+  pointer-events:none;
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1), opacity .3s;
+  opacity:0; white-space:nowrap;
+}
+.phase-announcement.show { transform:translate(-50%,-50%) scale(1); opacity:1; }
+.phase-announcement.hide { transform:translate(-50%,-50%) scale(.8); opacity:0; transition:transform .2s,opacity .2s; }
+.phase-announcement.my    { border-color:rgba(46,204,113,.7); color:#7dffb3; text-shadow:0 0 20px rgba(46,204,113,.5); }
+.phase-announcement.enemy { border-color:rgba(231,76,60,.6);  color:#ff9999; text-shadow:0 0 20px rgba(231,76,60,.4); }
 
-  /* ── ЛЕНТА СОБЫТИЙ ───────────────────────────────────── */
-  .log-panel {
-    background: rgba(4,31,53,0.6);
-    border: 1px solid rgba(26,159,212,0.2);
-    border-radius: 10px;
-    padding: 16px;
-    margin-bottom: 20px;
-  }
-  .log-panel h3 { font-size: 10px; letter-spacing: 3px; color: rgba(168,228,255,0.5); margin-bottom: 10px; }
-  .log-list {
-    list-style: none; display: flex; flex-direction: column; gap: 4px;
-    max-height: 120px; overflow-y: auto;
-  }
-  .log-list::-webkit-scrollbar { width: 4px; }
-  .log-list::-webkit-scrollbar-track { background: transparent; }
-  .log-list::-webkit-scrollbar-thumb { background: rgba(26,159,212,0.3); border-radius: 2px; }
-  .log-entry {
-    font-size: 11px; padding: 4px 8px; border-radius: 4px;
-    background: rgba(2,13,24,0.4);
-    animation: fadeIn 0.3s ease;
-  }
-  .log-entry.hit  { color: var(--hit);  border-left: 2px solid var(--hit); }
-  .log-entry.miss { color: var(--miss); border-left: 2px solid var(--miss); }
-  .log-entry.sunk { color: var(--sunk); border-left: 2px solid var(--sunk); }
-  .log-entry .ts  { color: rgba(168,228,255,0.3); margin-right: 8px; font-size: 10px; }
+/* ─── ЛЕГЕНДА ─────────────────────────────────────────────── */
+.legend { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-bottom:12px; }
+.legend-item { display:flex; align-items:center; gap:5px; font-size:9px; color:rgba(168,228,255,.45); letter-spacing:1px; }
+.legend-dot { width:10px; height:10px; border-radius:2px; border:1px solid; flex-shrink:0; }
+.legend-dot.ship  { background:rgba(39,174,96,.4);  border-color:rgba(46,204,113,.6); }
+.legend-dot.hit   { background:rgba(255,68,68,.5);  border-color:var(--hit); }
+.legend-dot.miss  { background:rgba(58,123,213,.2); border-color:rgba(58,123,213,.5); }
+.legend-dot.sunk  { background:rgba(255,140,0,.45); border-color:var(--sunk); }
+.legend-dot.water { background:rgba(7,51,88,.5);    border-color:rgba(10,73,117,.6); }
 
-  /* ── ПАНЕЛЬ ПОБЕДИТЕЛЯ ───────────────────────────────── */
-  .winner-overlay {
-    display: none; position: fixed; inset: 0;
-    background: rgba(2,13,24,0.88); z-index: 100;
-    align-items: center; justify-content: center;
-    backdrop-filter: blur(4px);
-  }
-  .winner-overlay.show { display: flex; }
-  .winner-card {
-    background: rgba(4,31,53,0.97);
-    border: 2px solid var(--gold);
-    border-radius: 16px; padding: 48px 56px;
-    text-align: center;
-    box-shadow: 0 0 80px rgba(240,192,64,0.2);
-    animation: fadeIn 0.5s ease;
-  }
-  .winner-card .crown { font-size: 56px; margin-bottom: 16px; }
-  .winner-card h2 {
-    font-family: 'Russo One', sans-serif; font-size: 28px; letter-spacing: 4px;
-    color: var(--gold); text-shadow: 0 0 20px rgba(240,192,64,0.4);
-    margin-bottom: 8px;
-  }
-  .winner-card p { color: rgba(168,228,255,0.6); font-size: 13px; letter-spacing: 2px; margin-bottom: 24px; }
+/* ─── ЖУРНАЛ ХОДОВ ──────────────────────────────────────────── */
+.log-panel {
+  background:rgba(4,31,53,.6); border:1px solid rgba(26,159,212,.2);
+  border-radius:10px; padding:12px; margin-top:14px;
+}
+.log-panel h3 { font-size:9px; letter-spacing:3px; color:rgba(168,228,255,.45); margin-bottom:8px; }
+.log-list {
+  list-style:none; display:flex; flex-direction:column; gap:3px;
+  max-height:100px; overflow-y:auto;
+}
+.log-list::-webkit-scrollbar { width:3px; }
+.log-list::-webkit-scrollbar-thumb { background:rgba(26,159,212,.3); border-radius:2px; }
+.log-entry { font-size:10px; padding:3px 7px; border-radius:3px; background:rgba(2,13,24,.4); animation:fadeIn .25s ease; }
+.log-entry.hit  { color:var(--hit);  border-left:2px solid var(--hit); }
+.log-entry.miss { color:var(--miss); border-left:2px solid var(--miss); }
+.log-entry.sunk { color:var(--sunk); border-left:2px solid var(--sunk); }
+.log-entry .ts  { color:rgba(168,228,255,.3); margin-right:6px; font-size:9px; }
 
-  /* ── НИЖНЯЯ ПАНЕЛЬ ──────────────────────────────────── */
-  .actions-bar { display: flex; gap: 12px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
+/* ─── КНОПКИ ДЕЙСТВИЙ ────────────────────────────────────────────── */
+.actions-bar { display:flex; gap:10px; justify-content:center; margin-top:14px; flex-wrap:wrap; }
 
-  /* ── ОЖИДАНИЕ ─────────────────────────────────────────── */
-  .waiting-msg { text-align: center; padding: 40px 20px; }
-  .waiting-msg .icon { font-size: 48px; margin-bottom: 16px; animation: wave 3s ease-in-out infinite; display: block; }
-  .waiting-msg h3 { font-family: 'Russo One', sans-serif; font-size: 18px; letter-spacing: 3px; color: var(--gold); margin-bottom: 8px; }
-  .waiting-msg p { font-size: 12px; color: rgba(168,228,255,0.5); letter-spacing: 1px; }
+/* ─── ОЖИДАНИЕ ────────────────────────────────────────── */
+.waiting-msg { text-align:center; padding:32px 16px; }
+.waiting-msg .icon { font-size:44px; margin-bottom:12px; animation:wave 3s ease-in-out infinite; display:block; }
+.waiting-msg h3 { font-family:'Russo One',sans-serif; font-size:16px; letter-spacing:3px; color:var(--gold); margin-bottom:6px; }
+.waiting-msg p { font-size:11px; color:rgba(168,228,255,.45); letter-spacing:1px; }
 
-  /* ── ЛЕГЕНДА ─────────────────────────────────────────── */
-  .legend { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
-  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 10px; color: rgba(168,228,255,0.5); letter-spacing: 1px; }
-  .legend-dot { width: 12px; height: 12px; border-radius: 2px; border: 1px solid; }
-  .legend-dot.ship  { background: rgba(39,174,96,0.4);  border-color: rgba(46,204,113,0.6); }
-  .legend-dot.hit   { background: rgba(255,68,68,0.5);  border-color: var(--hit); }
-  .legend-dot.miss  { background: rgba(58,123,213,0.2); border-color: rgba(58,123,213,0.5); }
-  .legend-dot.sunk  { background: rgba(255,107,0,0.45); border-color: var(--sunk); }
-  .legend-dot.water { background: rgba(7,51,88,0.5);    border-color: rgba(10,73,117,0.6); }
+/* ─── ОВЕРЛЕЙ ПОБЕДИТЕЛЯ ─────────────────────────────────────── */
+.winner-overlay {
+  display:none; position:fixed; inset:0;
+  background:rgba(2,13,24,.88); z-index:100;
+  align-items:center; justify-content:center;
+  backdrop-filter:blur(4px); padding:16px;
+}
+.winner-overlay.show { display:flex; }
+.winner-card {
+  background:rgba(4,31,53,.97); border:2px solid var(--gold);
+  border-radius:16px; padding:36px 32px; text-align:center;
+  box-shadow:0 0 80px rgba(240,192,64,.2); animation:fadeIn .5s ease;
+  width:100%; max-width:360px;
+}
+.winner-card .crown { font-size:50px; margin-bottom:12px; }
+.winner-card h2 {
+  font-family:'Russo One',sans-serif; font-size:clamp(20px,5vw,28px);
+  letter-spacing:4px; color:var(--gold);
+  text-shadow:0 0 20px rgba(240,192,64,.4); margin-bottom:6px;
+}
+.winner-card p { color:rgba(168,228,255,.55); font-size:12px; letter-spacing:2px; margin-bottom:20px; }
 
-  /* ── ADMIN PANEL ─────────────────────────────────────── */
-  .admin-panel {
-    background: rgba(4,31,53,0.6);
-    border: 1px solid rgba(240,192,64,0.2);
-    border-radius: 10px; padding: 16px 20px; margin-bottom: 20px;
-  }
-  .admin-panel summary { cursor: pointer; font-size: 10px; letter-spacing: 3px; color: rgba(240,192,64,0.6); user-select: none; outline: none; }
-  .admin-panel summary:hover { color: var(--gold); }
-  .admin-inner { margin-top: 16px; display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
-  .admin-inner .field-group { margin-bottom: 0; flex: 1; min-width: 120px; }
+/* ─── БЛОКИРОВКА ВВОДА ─────────────────────────────────────────── */
+#inputLock { position:fixed; inset:0; z-index:900; pointer-events:all; cursor:default; display:none; }
+#inputLock.active { display:block; }
 
-  /* ── ИНДИКАТОР POLLING ───────────────────────────────── */
-  .polling-dot {
-    position: fixed; bottom: 16px; right: 16px;
-    width: 8px; height: 8px; border-radius: 50%;
-    background: var(--foam); opacity: 0.6; transition: opacity 0.3s;
-  }
-  .polling-dot.active { animation: pulse-glow 0.5s ease; opacity: 1; }
+/* ─── УВЕДОМЛЕНИЕ О ВЫСТРЕЛЕ ────────────────────────────────────── */
+#shootingNotice {
+  position:fixed; bottom:44px; left:50%;
+  transform:translateX(-50%) translateY(20px);
+  z-index:950; background:rgba(4,31,53,.95);
+  border:1px solid rgba(26,159,212,.4); border-radius:30px;
+  padding:9px 20px; font-size:11px; letter-spacing:2px; color:var(--foam);
+  display:flex; align-items:center; gap:8px;
+  opacity:0; transition:opacity .2s, transform .2s; pointer-events:none;
+}
+#shootingNotice.show { opacity:1; transform:translateX(-50%) translateY(0); }
+.shooting-dot { width:7px; height:7px; border-radius:50%; background:var(--foam); animation:pulse-glow .6s ease-in-out infinite; flex-shrink:0; }
 
-  /* ── INPUT LOCK OVERLAY ──────────────────────────────── */
-  #inputLock {
-    position: fixed; inset: 0; z-index: 900;
-    pointer-events: all;
-    cursor: default;
-    display: none;
-  }
-  #inputLock.active { display: block; }
+/* ─── ИНДИКАТОР ОПРОСА ────────────────────────────────────────── */
+.polling-dot {
+  position:fixed; bottom:14px; right:14px;
+  width:7px; height:7px; border-radius:50%;
+  background:var(--foam); opacity:.5; transition:opacity .3s;
+}
+.polling-dot.active { animation:pulse-glow .4s ease; opacity:1; }
 
-  /* Уведомление о выстреле (вместо курсора загрузки) */
-  #shootingNotice {
-    position: fixed;
-    bottom: 48px; left: 50%;
-    transform: translateX(-50%) translateY(20px);
-    z-index: 950;
-    background: rgba(4,31,53,0.95);
-    border: 1px solid rgba(26,159,212,0.4);
-    border-radius: 30px;
-    padding: 10px 24px;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 12px;
-    letter-spacing: 2px;
-    color: var(--foam);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    opacity: 0;
-    transition: opacity 0.2s, transform 0.2s;
-    pointer-events: none;
-  }
-  #shootingNotice.show {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-  .shooting-dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: var(--foam);
-    animation: pulse-glow 0.6s ease-in-out infinite;
-    flex-shrink: 0;
-  }
+/* ─── ПЕРЕКЛЮЧАТЕЛЬ ПОЛЕЙ ──────────────────────────────────────── */
+.view-switcher {
+  display:flex; gap:8px; justify-content:center; margin-bottom:12px;
+}
+.view-btn {
+  flex:1; padding:9px 12px; border:none; border-radius:6px;
+  font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:2px;
+  cursor:pointer; transition:all .15s; text-transform:uppercase;
+  background:rgba(4,31,53,.7); color:rgba(168,228,255,.4);
+  border:1px solid rgba(26,159,212,.15); touch-action:manipulation;
+}
+.view-btn.active-mine-btn {
+  background:rgba(46,204,113,.15); color:#7dffb3;
+  border-color:rgba(46,204,113,.4);
+}
+.view-btn.active-enemy-btn {
+  background:rgba(231,76,60,.15); color:#ff9999;
+  border-color:rgba(231,76,60,.35);
+}
 
-  /* ── УВЕДОМЛЕНИЕ О ЗАХВАТЕ ─────────────────────────────────── */
-  .takeover-overlay {
-    display: none; position: fixed; inset: 0;
-    background: rgba(2,13,24,0.92); z-index: 200;
-    align-items: center; justify-content: center;
-    backdrop-filter: blur(6px);
-  }
-  .takeover-overlay.show { display: flex; }
-  .takeover-card {
-    background: rgba(4,31,53,0.97);
-    border: 2px solid var(--gold); border-radius: 16px;
-    padding: 36px 44px; text-align: center;
-    box-shadow: 0 0 60px rgba(240,192,64,0.25);
-    animation: fadeIn 0.4s ease; max-width: 400px;
-  }
-  .takeover-card h3 { font-family: 'Russo One', sans-serif; font-size: 18px; letter-spacing: 2px; color: var(--gold); margin-bottom: 12px; }
-  .takeover-card p { font-size: 13px; color: rgba(168,228,255,0.7); margin-bottom: 16px; line-height: 1.5; }
-  .takeover-timer { font-size: 32px; font-family: 'Russo One', sans-serif; color: var(--red); margin: 16px 0; animation: blink 0.5s ease infinite; }
-  .takeover-actions { display: flex; gap: 12px; justify-content: center; margin-top: 20px; }
-  .takeover-waiting { font-size: 11px; color: rgba(168,228,255,0.5); margin-top: 8px; }
-
-  /* ── АДАПТИВНОСТЬ ─────────────────────────────────────── */
-  @media (max-width: 640px) {
-    :root { --cell-size: 28px; }
-    .login-card { padding: 24px 20px; }
-    .status-bar { padding: 10px 14px; }
-    .winner-card { padding: 32px 24px; }
-    .phase-announcement { font-size: 16px; padding: 20px 28px; }
-  }
+/* ─── МОБИЛЬНЫЕ НАСТРОЙКИ ──────────────────────────────────────── */
+@media (max-width:400px) {
+  :root { --cs: 28px; }
+  .card { padding:22px 16px; }
+  .winner-card { padding:28px 20px; }
+}
+@media (max-width:340px) {
+  :root { --cs: 25px; }
+}
 </style>
 </head>
 <body>
 
-<!-- Снарядный canvas (поверх всего) -->
 <canvas id="projectileCanvas"></canvas>
-
-<!-- Input lock (блокирует всё взаимодействие во время анимации) -->
 <div id="inputLock"></div>
-
-<!-- Уведомление о выстреле -->
-<div id="shootingNotice">
-  <div class="shooting-dot"></div>
-  <span id="shootingNoticeText">ВЫСТРЕЛ...</span>
-</div>
-
-<!-- Объявление смены хода -->
+<div id="shootingNotice"><div class="shooting-dot"></div><span id="shootingNoticeText">ПРИЦЕЛИВАНИЕ...</span></div>
 <div class="phase-announcement" id="phaseAnnouncement"></div>
 
-<!-- ШАПКА -->
 <header>
   <div class="logo">NAVAL <span>COMBAT</span></div>
-  <div class="subtitle">2 ИГРОКА</div>
+  <div class="subtitle">ТАКТИЧЕСКИЙ МОРСКОЙ БОЙ</div>
 </header>
 
 <div class="app">
 
-  <!-- ── ЭКРАН ВХОДА ──────────────────────────────────── -->
-  <div id="loginScreen">
-    <div class="login-card">
-      <h2>⚓ ВХОД В ИГРУ</h2>
-      <div class="field-group">
-        <label>НИКНЕЙМ</label>
-        <input type="text" id="inNickname" placeholder="Введите никнейм" maxlength="20">
-      </div>
-      <button class="btn btn-primary" onclick="joinGame()">🚢 ВОЙТИ В ИГРУ</button>
-      <div id="loginMsg"></div>
+<!-- ── LOBBY SCREEN ────────────────────────────────────── -->
+<div class="screen" id="lobbyScreen">
+  <div class="card">
+    <h2>⚓ ВХОД В ИГРУ</h2>
+    <div class="field-group">
+      <label>НИКНЕЙМ</label>
+      <input type="text" id="inNickname" placeholder="Введите никнейм" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="off">
+    </div>
 
-      <details style="margin-top:16px;">
-        <summary style="cursor:pointer;font-size:10px;letter-spacing:2px;color:rgba(168,228,255,0.28);user-select:none;outline:none;list-style:none;text-align:center;padding:4px 0;">▸ СЛУЖЕБНЫЙ ВХОД</summary>
-        <div style="margin-top:14px;border-top:1px solid rgba(26,159,212,0.15);padding-top:14px;">
+    <div id="lobbyListWrap">
+      <div id="lobbySpinner" style="margin:12px 0;"><div class="spinner"></div></div>
+      <div class="lobby-list" id="lobbyList"></div>
+    </div>
 
-      <div class="divider" style="margin:0 0 16px;"><span>ПРИНУДИТЕЛЬНЫЙ ВХОД</span></div>
-      <div class="field-group">
-        <label>ПАРОЛЬ АДМИНИСТРАТОРА</label>
-        <input type="password" id="inPassword" placeholder="Пароль для кика игрока">
+    <div class="divider"><span>ИЛИ</span></div>
+    <button class="btn btn-primary" id="btnCreateRoom" onclick="createRoom()">🚢 СОЗДАТЬ КОМНАТУ</button>
+    <div id="lobbyMsg"></div>
+  </div>
+</div>
+
+<!-- ── GAME SCREEN ─────────────────────────────────────── -->
+<div class="screen" id="gameScreen">
+
+  <!-- Status bar -->
+  <div class="status-bar">
+    <div class="status-item">
+      <div class="status-label">YOU</div>
+      <div class="status-value" id="statusMe">—</div>
+    </div>
+    <div class="status-item">
+      <div class="status-label">OPPONENT</div>
+      <div class="status-value" id="statusEnemy">Ожидание...</div>
+    </div>
+    <div class="status-item">
+      <div class="status-label">PHASE</div>
+      <div style="display:flex;align-items:center;">
+        <span class="phase-dot waiting" id="phaseDot"></span>
+        <span class="status-value" id="statusPhase">Waiting</span>
       </div>
-      <div class="field-group">
-        <label>КИКНУТЬ СЛОТ</label>
-        <select id="inKickSlot" style="background:rgba(2,13,24,0.8);border:1px solid rgba(26,159,212,0.3);border-radius:6px;color:#e8f4ff;font-family:'Share Tech Mono',monospace;font-size:14px;padding:10px 14px;width:100%;outline:none;">
-          <option value="1">Слот 1 (первый игрок)</option>
-          <option value="2">Слот 2 (второй игрок)</option>
-        </select>
-      </div>
-      <button class="btn btn-danger" onclick="forceJoin()">⚡ ПРИНУДИТЕЛЬНЫЙ ВХОД</button>
-        </div>
-      </details>
+    </div>
+    <div class="status-item">
+      <div class="status-label">TURN</div>
+      <div class="status-value" id="statusTurn">—</div>
     </div>
   </div>
 
-  <!-- ── ИГРОВОЙ ЭКРАН ────────────────────────────────── -->
-  <div id="gameScreen">
+  <!-- Ожидание противника -->
+  <div id="waitingBlock" class="waiting-msg">
+    
+    <h3>ОЖИДАНИЕ ПРОТИВНИКА</h3>
+    <p>Поделитесь ссылкой на эту страницу со вторым игроком</p>
+  </div>
 
-    <!-- Статус-бар -->
-    <div class="status-bar">
-      <div class="status-item">
-        <div class="status-label">ВЫ</div>
-        <div class="status-value" id="statusMe">—</div>
-      </div>
-      <div class="status-item">
-        <div class="status-label">ПРОТИВНИК</div>
-        <div class="status-value" id="statusEnemy">Ожидание...</div>
-      </div>
-      <div class="status-item">
-        <div class="status-label">ФАЗА</div>
-        <div class="status-phase">
-          <div class="phase-dot waiting" id="phaseDot"></div>
-          <div class="status-value" id="statusPhase">Ожидание</div>
+  <!-- Boards block -->
+  <div id="boardsBlock" style="display:none;">
+
+    <!-- Legend -->
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot ship"></div>Мой корабль</div>
+      <div class="legend-item"><div class="legend-dot hit"></div>Попадание</div>
+      <div class="legend-item"><div class="legend-dot sunk"></div>Потоплен</div>
+      <div class="legend-item"><div class="legend-dot miss"></div>Промах</div>
+    </div>
+
+    <!-- Turn badge -->
+    <div class="turn-banner"><span class="turn-badge" id="turnBadge"></span></div>
+
+    <!-- Opponent thinking indicator -->
+    <div class="thinking-bar" id="thinkingBar">
+      <div class="think-dots"><span></span><span></span><span></span></div>
+      <div class="thinking-bar-text" id="thinkingBarText">ПРОТИВНИК ДУМАЕТ...</div>
+    </div>
+
+    <!-- View switcher (mobile-friendly) -->
+    <div class="view-switcher">
+      <button class="view-btn" id="btnViewMine"  onclick="switchView('mine', true)">⚓ МОЁ ПОЛЕ</button>
+      <button class="view-btn" id="btnViewEnemy" onclick="switchView('enemy', true)">🎯 АТАКОВАТЬ</button>
+    </div>
+
+    <!-- Boards stage -->
+    <div class="boards-stage" id="boardsStage">
+      <!-- My board -->
+      <div class="board-panel" id="myBoardPanel">
+        <div class="board-title">⚓ МОЁ ПОЛЕ</div>
+        <div class="grid-labels-row" id="myLabelsRow"></div>
+        <div class="grid-wrapper">
+          <div class="grid-labels-col" id="myLabelsCol"></div>
+          <div class="grid" id="myGrid"></div>
         </div>
       </div>
-      <div class="status-item">
-        <div class="status-label">ХОД</div>
-        <div class="status-value" id="statusTurn">—</div>
-      </div>
-    </div>
-
-    <!-- Ожидание второго игрока -->
-    <div id="waitingBlock" class="waiting-msg">
-      <span class="icon">⚓</span>
-      <h3>ОЖИДАНИЕ ПРОТИВНИКА</h3>
-      <p>Поделитесь ссылкой на эту страницу со вторым игроком</p>
-    </div>
-
-    <!-- Игровые поля -->
-    <div id="boardsBlock" style="display:none;">
-      <div class="legend">
-        <div class="legend-item"><div class="legend-dot ship"></div>Ваш корабль</div>
-        <div class="legend-item"><div class="legend-dot hit"></div>Попадание</div>
-        <div class="legend-item"><div class="legend-dot sunk"></div>Потоплен</div>
-        <div class="legend-item"><div class="legend-dot miss"></div>Промах</div>
-        <div class="legend-item"><div class="legend-dot water"></div>Вода</div>
-      </div>
-
-      <!-- Баннер хода -->
-      <div class="turn-banner">
-        <span class="turn-badge" id="turnBadge"></span>
-      </div>
-
-      <!-- Арена: одно поле за раз -->
-      <div class="arena">
-        <div class="boards-stage" id="boardsStage">
-          <!-- Моё поле -->
-          <div class="board-panel" id="myBoardPanel">
-            <div class="board-dimmed" id="myBoardDimmed"></div>
-            <div class="board-title">⚓ МОЁ ПОЛЕ</div>
-            <div class="grid-labels-row" id="myLabelsRow"></div>
-            <div class="grid-wrapper">
-              <div class="grid-labels-col" id="myLabelsCol"></div>
-              <div class="grid" id="myGrid"></div>
-            </div>
-          </div>
-
-          <!-- Поле противника -->
-          <div class="board-panel" id="enemyBoardPanel" style="display:none;">
-            <div class="board-dimmed" id="enemyBoardDimmed"></div>
-            <div class="board-title enemy">🎯 ПОЛЕ ПРОТИВНИКА</div>
-            <div class="grid-labels-row" id="enemyLabelsRow"></div>
-            <div class="grid-wrapper">
-              <div class="grid-labels-col" id="enemyLabelsCol"></div>
-              <div class="grid" id="enemyGrid"></div>
-            </div>
-          </div>
+      <!-- Enemy board -->
+      <div class="board-panel" id="enemyBoardPanel" style="display:none;">
+        <div class="board-title enemy">🎯 ПОЛЕ ПРОТИВНИКА</div>
+        <div class="grid-labels-row" id="enemyLabelsRow"></div>
+        <div class="grid-wrapper">
+          <div class="grid-labels-col" id="enemyLabelsCol"></div>
+          <div class="grid" id="enemyGrid"></div>
         </div>
       </div>
-
-      <!-- Журнал ходов -->
-      <div class="log-panel">
-        <h3>📋 ЖУРНАЛ ХОДОВ</h3>
-        <ul class="log-list" id="logList"></ul>
-      </div>
     </div>
 
-    <!-- Кнопки действий -->
-    <div class="actions-bar">
-      <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
+    <!-- Move log -->
+    <div class="log-panel">
+      <h3>📋 ЖУРНАЛ ХОДОВ</h3>
+      <ul class="log-list" id="logList"></ul>
     </div>
+  </div>
 
-    <!-- Админ-панель -->
-    <details class="admin-panel">
-      <summary>⚙ АДМИНИСТРИРОВАНИЕ</summary>
-      <div class="admin-inner">
-        <div class="field-group">
-          <label>ПАРОЛЬ АДМИНИСТРАТОРА</label>
-          <input type="password" id="adminPassword" placeholder="Пароль">
-        </div>
-        <button class="btn btn-danger btn-sm" onclick="restartGame()">🔄 Перезапустить игру</button>
-      </div>
-    </details>
+  <!-- Action bar -->
+  <div class="actions-bar">
+    <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
+  </div>
 
-  </div><!-- /gameScreen -->
+</div><!-- /gameScreen -->
 
 </div><!-- /app -->
 
-<!-- Оверлей победителя -->
+<!-- Winner overlay -->
 <div class="winner-overlay" id="winnerOverlay">
   <div class="winner-card">
     <div class="crown">🏆</div>
-    <h2 id="winnerName">ПОБЕДИТЕЛЬ</h2>
-    <p id="winnerMsg">одержал победу в морском бою</p>
-    <button class="btn btn-primary" onclick="closeWinner()">Продолжить</button>
-  </div>
-</div>
-
-<!-- Оверлей захвата места -->
-<div class="takeover-overlay" id="takeoverOverlay">
-  <div class="takeover-card">
-    <h3 id="takeoverTitle">⚠ ЗАПРОС НА ЗАХВАТ</h3>
-    <p id="takeoverMsg">Игрок "НовыйИгрок" хочет занять ваше место</p>
-    <div class="takeover-timer" id="takeoverTimer">5</div>
-    <div class="takeover-actions" id="takeoverActions">
-      <button class="btn btn-primary btn-sm" onclick="acceptTakeover()">Принять</button>
-      <button class="btn btn-danger btn-sm" onclick="denyTakeover()">Отклонить</button>
+    <h2 id="winnerName">WINNER</h2>
+    <p id="winnerMsg">won the battle</p>
+    <div class="btn-row" style="gap:10px;">
+      <button class="btn btn-primary btn-sm" onclick="rematch()" id="btnRematch">🔄 Реванш</button>
+      <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🏠 Выйти</button>
     </div>
-    <div class="takeover-waiting" id="takeoverWaiting" style="display:none;">Ожидание ответа...</div>
   </div>
 </div>
 
-<!-- Индикатор polling -->
 <div class="polling-dot" id="pollingDot"></div>
 
 <script>
 // ============================================================
 // МОРСКОЙ БОЙ — Клиентская логика v2.0
+// Комнатный матчмейкинг, переподключение, мобильная адаптация
 // ============================================================
 
-// ── КОНФИГУРАЦИЯ ─────────────────────────────────────────────
-var API_URL = "https://script.google.com/macros/s/AKfycbzgCpF7_eofn2ibyyyFROpyXWYC1NEdrQLWJ5n3fMECXfRvuv0eoHK6ksFnWP8t1ulLeg/exec";
-var POLL_INTERVAL = 300; // мс (оптимизировано: было 200, но снаряд+анимация дают +800мс блокировки)
+var API_URL       = "https://script.google.com/macros/s/AKfycbxD4r0s2y9qp1UayNrkMES35-oEnXYlgkVqT3svp4eQ4FtDGPFF8WpAuOwbiTuW3h_JHA/exec";
+var POLL_INTERVAL = 200; // ms
 
-// ── СОСТОЯНИЕ ПРИЛОЖЕНИЯ ─────────────────────────────────────
+// ── СОСТОЯНИЕ ПРИЛОЖЕНИЯ ─────────────────────────────────────────────
 var state = {
   playerId:     null,
+  roomId:       null,
   mySlot:       null,
   nickname:     null,
   myBoard:      null,
   gameState:    null,
   pollTimer:    null,
-  log:          [],
   winnerShown:  false,
-  takeoverTimer:    null,
-  pendingTakeover:  null,
-  // Новые поля для логики переключения полей
-  inputLocked:  false,     // заблокировано ли взаимодействие
-  currentView:  "mine",    // "mine" | "enemy" — что сейчас показываем
-  prevTurn:     null,      // чей был ход в прошлом состоянии
-  lastShotCount: { p1: 0, p2: 0 }, // для отслеживания новых выстрелов
+  inputLocked:  false,
+  currentView:  "mine",
+  prevTurn:     null,
 };
 
-// ── ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ──────────────────────────────────
-var COL_LABELS = ["А","Б","В","Г","Д","Е","Ж","З","И","К"];
+var COL_LABELS = ["A","B","C","D","E","F","G","H","I","J"];
 var ROW_LABELS = ["1","2","3","4","5","6","7","8","9","10"];
 
+// ── АПИ ЗАПРОСЫ ──────────────────────────────────────────────────
 function apiPost(data) {
   return fetch(API_URL, {
-    method:  "POST",
-    body:    JSON.stringify(data),
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    redirect: "follow"
+    method:"POST", redirect:"follow",
+    body: JSON.stringify(data),
+    headers:{"Content-Type":"text/plain;charset=utf-8"}
   }).then(function(r){ return r.json(); });
 }
-
 function apiGet(params) {
-  var url = API_URL + "?action=state";
-  if (params.playerId) url += "&playerId=" + encodeURIComponent(params.playerId);
-  return fetch(url, { redirect: "follow" }).then(function(r){ return r.json(); });
+  var url = API_URL + "?action=" + (params.action || "state");
+  Object.keys(params).forEach(function(k) {
+    if (k !== "action") url += "&" + k + "=" + encodeURIComponent(params[k]);
+  });
+  return fetch(url, {redirect:"follow"}).then(function(r){ return r.json(); });
 }
 
-function showLoginMsg(text, type) {
-  var el = document.getElementById("loginMsg");
-  el.innerHTML = '<div class="message message-' + type + '">' + text + '</div>';
-}
-
+// ── ХРАНЕНИЕ СЕССИИ ───────────────────────────────────
 function saveSession() {
-  localStorage.setItem("mb_playerId", state.playerId);
-  localStorage.setItem("mb_nickname", state.nickname);
-  localStorage.setItem("mb_mySlot",   state.mySlot);
+  localStorage.setItem("nc_pid", state.playerId);
+  localStorage.setItem("nc_rid", state.roomId);
+  localStorage.setItem("nc_nick", state.nickname);
+  localStorage.setItem("nc_slot", state.mySlot);
 }
 function loadSession() {
-  state.playerId = localStorage.getItem("mb_playerId");
-  state.nickname = localStorage.getItem("mb_nickname");
-  state.mySlot   = parseInt(localStorage.getItem("mb_mySlot")) || null;
-  return !!(state.playerId && state.nickname);
+  state.playerId = localStorage.getItem("nc_pid");
+  state.roomId   = localStorage.getItem("nc_rid");
+  state.nickname = localStorage.getItem("nc_nick");
+  state.mySlot   = parseInt(localStorage.getItem("nc_slot")) || null;
+  return !!(state.playerId && state.roomId && state.nickname);
 }
 function clearSession() {
-  localStorage.removeItem("mb_playerId");
-  localStorage.removeItem("mb_nickname");
-  localStorage.removeItem("mb_mySlot");
-  state.playerId = null; state.nickname = null; state.mySlot = null;
-  state.myBoard  = null; state.pendingTakeover = null;
-  if (state.takeoverTimer) clearInterval(state.takeoverTimer);
+  ["nc_pid","nc_rid","nc_nick","nc_slot"].forEach(function(k){ localStorage.removeItem(k); });
+  state.playerId = null; state.roomId = null;
+  state.nickname = null; state.mySlot = null;
+  state.myBoard  = null; state.gameState = null;
 }
 
-// ── INPUT LOCK ────────────────────────────────────────────────
-function lockInput(noticeText) {
+// ── СООБЩЕНИЯ UI ───────────────────────────────────────────
+function showLobbyMsg(text, type) {
+  document.getElementById("lobbyMsg").innerHTML =
+    '<div class="msg msg-' + (type||"info") + '">' + text + '</div>';
+}
+
+// ── БЛОКИРОВКА ВВОДА ────────────────────────────────────────────
+function lockInput(txt) {
   state.inputLocked = true;
   document.getElementById("inputLock").classList.add("active");
-  var notice = document.getElementById("shootingNotice");
-  document.getElementById("shootingNoticeText").textContent = noticeText || "ВЫСТРЕЛ...";
-  notice.classList.add("show");
+  document.getElementById("shootingNoticeText").textContent = txt || "ПРИЦЕЛИВАНИЕ...";
+  document.getElementById("shootingNotice").classList.add("show");
 }
 function unlockInput() {
   state.inputLocked = false;
@@ -1000,251 +748,131 @@ function unlockInput() {
   document.getElementById("shootingNotice").classList.remove("show");
 }
 
-// ── ОБЪЯВЛЕНИЕ СМЕНЫ ХОДА ──────────────────────────────────
-function showPhaseAnnouncement(text, type) {
+// ── ОБЪЯВЛЕНИЕ ФАЗЫ ────────────────────────────────────
+function showAnnouncement(text, type) {
   return new Promise(function(resolve) {
     var el = document.getElementById("phaseAnnouncement");
     el.className = "phase-announcement " + type;
     el.textContent = text;
-    // Форс-рефлоу
     void el.offsetHeight;
     el.classList.add("show");
     setTimeout(function() {
-      el.classList.add("hide");
-      el.classList.remove("show");
-      setTimeout(function() {
-        el.className = "phase-announcement";
-        resolve();
-      }, 220);
+      el.classList.add("hide"); el.classList.remove("show");
+      setTimeout(function() { el.className = "phase-announcement"; resolve(); }, 220);
     }, 900);
   });
 }
 
-// ── ПЕРЕКЛЮЧЕНИЕ ВИДИМОСТИ ПОЛЕЙ ─────────────────────────────
-// view: "mine" | "enemy"
-function switchView(view, animate) {
-  if (state.currentView === view && !animate) return;
-  state.currentView = view;
-
-  var myPanel    = document.getElementById("myBoardPanel");
-  var enemyPanel = document.getElementById("enemyBoardPanel");
-  var myDimmed   = document.getElementById("myBoardDimmed");
-  var enemyDimmed = document.getElementById("enemyBoardDimmed");
-
-  if (view === "mine") {
-    // Показываем своё поле, скрываем поле противника
-    myPanel.style.display    = "";
-    enemyPanel.style.display = "none";
-    myPanel.classList.remove("active-enemy");
-    myPanel.classList.add("active-mine");
-    myDimmed.style.display   = "none";
-    if (animate) {
-      myPanel.classList.remove("board-entering-right", "board-entering-left", "board-leaving");
-      void myPanel.offsetWidth;
-      myPanel.classList.add("board-entering-left");
-    }
-  } else {
-    // Показываем поле противника, скрываем своё
-    myPanel.style.display    = "none";
-    enemyPanel.style.display = "";
-    enemyPanel.classList.remove("active-mine");
-    enemyPanel.classList.add("active-enemy");
-    enemyDimmed.style.display = "none";
-    if (animate) {
-      enemyPanel.classList.remove("board-entering-right", "board-entering-left", "board-leaving");
-      void enemyPanel.offsetWidth;
-      enemyPanel.classList.add("board-entering-right");
-    }
-  }
-}
-
-// ── ОБНОВЛЕНИЕ БАННЕРА ХОДА ────────────────────────────────
-function updateTurnBadge(isMyTurn, enemyName) {
-  var badge = document.getElementById("turnBadge");
-  if (isMyTurn) {
-    badge.className = "turn-badge my-turn";
-    badge.textContent = "⚡ ВАШ ХОД";
-  } else {
-    badge.className = "turn-badge enemy-turn";
-    badge.textContent = "⏳ ХОД: " + (enemyName || "ПРОТИВНИК");
-  }
-}
-
-// ── ВХОД В ИГРУ ───────────────────────────────────────────────
-async function joinGame() {
-  var nickname = document.getElementById("inNickname").value.trim();
-  if (!nickname) { showLoginMsg("Введите никнейм", "error"); return; }
-  showLoginMsg("Подключение...", "info");
+// ── ЛОББИ ─────────────────────────────────────────────────
+async function refreshLobby() {
+  document.getElementById("lobbySpinner").style.display = "block";
   try {
-    var res = await apiPost({ action: "join", nickname: nickname });
-    if (!res.ok && res.error.indexOf("заполнена") !== -1) {
-      showSelectSlotDialog(nickname); return;
-    }
-    if (!res.ok) { showLoginMsg(res.error, "error"); return; }
-    state.playerId = res.playerId;
-    state.mySlot   = res.slot;
-    state.nickname = nickname;
-    saveSession();
-    enterGameScreen();
-  } catch(e) {
-    showLoginMsg("Ошибка подключения. Проверьте URL API.", "error");
-  }
-}
-
-// ── ДИАЛОГ ВЫБОРА СЛОТА ─────────────────────────────────────
-function showSelectSlotDialog(nickname) {
-  var overlay = document.getElementById("takeoverOverlay");
-  document.getElementById("takeoverTitle").textContent = "⚠ МЕСТА ЗАНЯТЫ";
-  document.getElementById("takeoverMsg").textContent = "Все слоты заняты. Выберите место для захвата:";
-  document.getElementById("takeoverTimer").style.display = "none";
-  document.getElementById("takeoverActions").innerHTML =
-    '<button class="btn btn-primary btn-sm" onclick="requestTakeover(1)">Слот 1</button>' +
-    '<button class="btn btn-primary btn-sm" onclick="requestTakeover(2)">Слот 2</button>';
-  document.getElementById("takeoverWaiting").style.display = "none";
-  overlay.classList.add("show");
-}
-
-async function requestTakeover(slot) {
-  var nickname = document.getElementById("inNickname").value.trim();
-  try {
-    var res = await apiPost({ action: "requestTakeover", nickname: nickname, slot: slot });
-    if (!res.ok) {
-      if (res.pendingTakeover) showWaitingForTakeover(res);
-      else showLoginMsg(res.error, "error");
+    var res = await apiGet({ action:"lobby" });
+    document.getElementById("lobbySpinner").style.display = "none";
+    var list = document.getElementById("lobbyList");
+    list.innerHTML = "";
+    if (!res.ok || !res.rooms || res.rooms.length === 0) {
+      list.innerHTML = '<div style="font-size:11px;letter-spacing:1px;color:rgba(168,228,255,.35);text-align:center;padding:8px 0;">Нет открытых комнат</div>';
       return;
     }
-    if (res.takeoverRequested) {
-      showWaitingForTakeover(res);
+    res.rooms.forEach(function(room) {
+      var div = document.createElement("div");
+      div.className = "lobby-room";
+      div.innerHTML =
+        '<div>' +
+        '  <div class="lobby-room-nick">' + escHtml(room.hostNick) + '</div>' +
+        '  <div class="lobby-room-meta">ОЖИДАЕТ ПРОТИВНИКА</div>' +
+        '</div>' +
+        '<button class="btn btn-primary btn-sm lobby-join-btn" onclick="joinRoom(\'' + room.roomId + '\', \'' + escHtml(room.hostNick) + '\')">ВОЙТИ</button>';
+      list.appendChild(div);
+    });
+  } catch(e) {
+    document.getElementById("lobbySpinner").style.display = "none";
+    document.getElementById("lobbyList").innerHTML =
+      '<div style="font-size:11px;color:rgba(255,100,100,.6);text-align:center;padding:4px 0;">Ошибка подключения. Проверьте URL API.</div>';
+  }
+}
+
+function escHtml(str) {
+  return String(str).replace(/[&<>"']/g, function(c) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+function getNick() {
+  return document.getElementById("inNickname").value.trim();
+}
+
+async function joinRoom(roomId, hostNick) {
+  var nick = getNick();
+  if (!nick) { showLobbyMsg("Введите никнейм", "error"); return; }
+  showLobbyMsg("Подключение к комнате " + escHtml(hostNick) + "...", "info");
+  try {
+    var res = await apiPost({ action:"join", nickname:nick, roomId:roomId });
+    if (!res.ok) { showLobbyMsg(res.error, "error"); return; }
+    state.playerId = res.playerId; state.roomId = res.roomId;
+    state.mySlot   = res.slot;     state.nickname = nick;
+    saveSession(); enterGameScreen();
+  } catch(e) { showLobbyMsg("Ошибка подключения. Проверьте URL API.", "error"); }
+}
+
+async function createRoom() {
+  var nick = getNick();
+  if (!nick) { showLobbyMsg("Введите никнейм", "error"); return; }
+  document.getElementById("btnCreateRoom").disabled = true;
+  showLobbyMsg("Создание комнаты...", "info");
+  try {
+    var res = await apiPost({ action:"join", nickname:nick });
+    if (!res.ok) { showLobbyMsg(res.error, "error"); document.getElementById("btnCreateRoom").disabled = false; return; }
+    state.playerId = res.playerId; state.roomId = res.roomId;
+    state.mySlot   = res.slot;     state.nickname = nick;
+    saveSession(); enterGameScreen();
+  } catch(e) {
+    showLobbyMsg("Ошибка подключения. Проверьте URL API.", "error");
+    document.getElementById("btnCreateRoom").disabled = false;
+  }
+}
+
+// ── ПЕРЕПОДКЛЮЧЕНИЕ ─────────────────────────────────────────────
+async function tryReconnect() {
+  try {
+    var res = await apiPost({
+      action: "join",
+      nickname: state.nickname,
+      playerId: state.playerId,
+      roomId:   state.roomId
+    });
+    if (res.ok && res.reconnected) {
+      enterGameScreen();
     } else {
-      state.playerId = res.playerId; state.mySlot = res.slot; state.nickname = nickname;
-      saveSession(); enterGameScreen();
+      // Комната удалена, возврат в лобби
+      clearSession();
+      showLobbyScreen();
     }
-  } catch(e) { showLoginMsg("Ошибка запроса", "error"); }
+  } catch(e) {
+    clearSession(); showLobbyScreen();
+  }
 }
 
-function showWaitingForTakeover(res) {
-  var overlay = document.getElementById("takeoverOverlay");
-  document.getElementById("takeoverTitle").textContent = "⏳ ОЖИДАНИЕ";
-  document.getElementById("takeoverMsg").textContent = "Запрос отправлен игроку на слоте " + res.slot + ".\nЖдите его ответа...";
-  document.getElementById("takeoverTimer").style.display = "none";
-  document.getElementById("takeoverActions").innerHTML = '<button class="btn btn-ghost btn-sm" onclick="cancelTakeover()">Отмена</button>';
-  document.getElementById("takeoverWaiting").style.display = "block";
-  overlay.classList.add("show");
-  state.pendingTakeover = { playerId: res.playerId, slot: res.slot, expiresAt: res.expiresAt, currentPlayer: res.currentPlayer };
-  pollTakeoverState();
+// ── ПЕРЕХОДЫ МЕЖДУ ЭКРАНАМИ ────────────────────────────────────
+function showLobbyScreen() {
+  document.getElementById("lobbyScreen").classList.add("active");
+  document.getElementById("gameScreen").classList.remove("active");
+  refreshLobby();
+  // Автообновление лобби каждые 5 секунд
+  if (state.lobbyRefreshTimer) clearInterval(state.lobbyRefreshTimer);
+  state.lobbyRefreshTimer = setInterval(refreshLobby, 5000);
 }
 
-var takeoverPollTimer = null;
-function pollTakeoverState() {
-  if (takeoverPollTimer) clearInterval(takeoverPollTimer);
-  takeoverPollTimer = setInterval(async function() {
-    if (!state.pendingTakeover) { clearInterval(takeoverPollTimer); return; }
-    try {
-      var res = await apiGet({ playerId: state.pendingTakeover.playerId });
-      if (res.ok && res.players) {
-        var me = res.players.filter(function(p){ return p.playerId === state.pendingTakeover.playerId; })[0];
-        if (me) {
-          clearInterval(takeoverPollTimer);
-          document.getElementById("takeoverOverlay").classList.remove("show");
-          state.playerId = me.playerId; state.mySlot = me.slot; state.nickname = me.nickname;
-          state.pendingTakeover = null; saveSession(); enterGameScreen(); return;
-        }
-      }
-      var now = Math.floor(Date.now() / 1000);
-      if (state.pendingTakeover.expiresAt && now > state.pendingTakeover.expiresAt) {
-        clearInterval(takeoverPollTimer);
-        document.getElementById("takeoverOverlay").classList.remove("show");
-        showLoginMsg("Время вышло. Игрок не ответил.", "error");
-        state.pendingTakeover = null;
-      }
-    } catch(e) {}
-  }, 500);
-}
-
-async function cancelTakeover() {
-  clearInterval(takeoverPollTimer);
-  document.getElementById("takeoverOverlay").classList.remove("show");
-  state.pendingTakeover = null; showLoginMsg("Запрос отменён", "info");
-}
-
-async function acceptTakeover() {
-  try {
-    var res = await apiPost({ action: "acceptTakeover", playerId: state.playerId, nickname: state.nickname });
-    document.getElementById("takeoverOverlay").classList.remove("show");
-    clearInterval(state.takeoverTimer);
-    if (res.ok) { showLoginMsg("Вы разрешили захват. Новый игрок займёт ваше место!", "success"); leaveGame(); }
-  } catch(e) {}
-}
-
-async function denyTakeover() {
-  try {
-    await apiPost({ action: "denyTakeover", playerId: state.playerId });
-    document.getElementById("takeoverOverlay").classList.remove("show");
-    clearInterval(state.takeoverTimer);
-  } catch(e) {}
-}
-
-function startTakeoverPolling() {
-  if (state.takeoverTimer) clearInterval(state.takeoverTimer);
-  state.takeoverTimer = setInterval(async function() {
-    if (!state.playerId) return;
-    try {
-      var gs = await apiGet({ playerId: state.playerId });
-      if (gs.pendingTakeover) showIncomingTakeover(gs.pendingTakeover);
-    } catch(e) {}
-  }, 1500);
-}
-
-async function forceJoin() {
-  var nickname = document.getElementById("inNickname").value.trim();
-  var password = document.getElementById("inPassword").value.trim();
-  var kickSlot = parseInt(document.getElementById("inKickSlot").value);
-  if (!nickname) { showLoginMsg("Введите никнейм", "error"); return; }
-  if (!password) { showLoginMsg("Введите пароль", "error"); return; }
-  showLoginMsg("Подключение...", "info");
-  try {
-    var res = await apiPost({ action: "forceJoin", nickname: nickname, password: password, kickSlot: kickSlot });
-    if (!res.ok) { showLoginMsg(res.error, "error"); return; }
-    state.playerId = res.playerId; state.mySlot = res.slot; state.nickname = nickname;
-    saveSession();
-    showLoginMsg("Игрок \"" + res.kicked + "\" выбит. Вы заняли его место.", "success");
-    setTimeout(enterGameScreen, 800);
-  } catch(e) { showLoginMsg("Ошибка подключения", "error"); }
-}
-
-// ── ПЕРЕХОД В ИГРОВОЙ ЭКРАН ───────────────────────────────────
 function enterGameScreen() {
-  document.getElementById("loginScreen").style.display = "none";
-  document.getElementById("gameScreen").style.display  = "block";
-  buildGridLabels();
-  buildGrids();
+  if (state.lobbyRefreshTimer) clearInterval(state.lobbyRefreshTimer);
+  document.getElementById("lobbyScreen").classList.remove("active");
+  document.getElementById("gameScreen").classList.add("active");
+  buildGridLabels(); buildGrids();
   startPolling();
-  startTakeoverPolling();
 }
 
-function showIncomingTakeover(pending) {
-  if (!pending || !pending.pendingTakeover) return;
-  var overlay = document.getElementById("takeoverOverlay");
-  if (overlay.classList.contains("show")) return;
-  document.getElementById("takeoverTitle").textContent = "⚠ КТО-ТО ХОЧЕТ ВАШЕ МЕСТО!";
-  document.getElementById("takeoverMsg").textContent = "Другой игрок хочет занять ваше место! Если вы не заблокируете в течение 5 секунд - он займёт его.";
-  var timerEl = document.getElementById("takeoverTimer");
-  timerEl.style.display = "block"; timerEl.textContent = "5";
-  document.getElementById("takeoverActions").innerHTML =
-    '<button class="btn btn-danger btn-sm" onclick="denyTakeover()">Заблокировать</button>' +
-    '<button class="btn btn-primary btn-sm" onclick="acceptTakeover()">Пропустить</button>';
-  document.getElementById("takeoverWaiting").style.display = "none";
-  overlay.classList.add("show");
-  var countdown = 5;
-  if (state.takeoverTimer) clearInterval(state.takeoverTimer);
-  state.takeoverTimer = setInterval(function() {
-    countdown--;
-    timerEl.textContent = countdown;
-    if (countdown <= 0) { clearInterval(state.takeoverTimer); acceptTakeover(); }
-  }, 1000);
-}
-
-// ── ПОСТРОЕНИЕ МЕТОК СЕТКИ ────────────────────────────────────
+// ── ПОСТРОЕНИЕ СЕТОК ─────────────────────────────────────────
 function buildGridLabels() {
   ["myLabelsRow","enemyLabelsRow"].forEach(function(id) {
     var el = document.getElementById(id); el.innerHTML = "";
@@ -1261,13 +889,11 @@ function buildGridLabels() {
 }
 
 function buildGrids() {
-  buildGrid("myGrid", false);
-  buildGrid("enemyGrid", true);
+  buildGrid("myGrid", false); buildGrid("enemyGrid", true);
 }
 
 function buildGrid(gridId, isEnemy) {
-  var el = document.getElementById(gridId);
-  el.innerHTML = "";
+  var el = document.getElementById(gridId); el.innerHTML = "";
   for (var r = 0; r < 10; r++) {
     for (var c = 0; c < 10; c++) {
       var cell = document.createElement("div");
@@ -1276,6 +902,8 @@ function buildGrid(gridId, isEnemy) {
       if (isEnemy) {
         (function(cx, cy) {
           cell.addEventListener("click", function() { shoot(cx, cy); });
+          // Поддержка тач-событий
+          cell.addEventListener("touchend", function(e) { e.preventDefault(); shoot(cx, cy); }, { passive:false });
         })(c, r);
       }
       el.appendChild(cell);
@@ -1283,351 +911,88 @@ function buildGrid(gridId, isEnemy) {
   }
 }
 
-// ── ВЫСТРЕЛ ───────────────────────────────────────────────────
-async function shoot(x, y) {
-  if (state.inputLocked) return; // блокировка на время анимации
-  var gs = state.gameState;
-  if (!gs || gs.phase !== "playing") return;
-  if (gs.turn !== state.playerId) return;
+// ── ПЕРЕКЛЮЧАТЕЛЬ ПОЛЕЙ ─────────────────────────────────────────
+function switchView(view, animate) {
+  if (state.currentView === view && !animate) return;
+  state.currentView = view;
 
-  var myShots = state.mySlot === 1 ? gs.shotsP1 : gs.shotsP2;
-  for (var i = 0; i < myShots.length; i++) {
-    if (myShots[i].x === x && myShots[i].y === y) return;
-  }
+  var myPanel    = document.getElementById("myBoardPanel");
+  var enemyPanel = document.getElementById("enemyBoardPanel");
+  var btnMine    = document.getElementById("btnViewMine");
+  var btnEnemy   = document.getElementById("btnViewEnemy");
 
-  // Сразу блокируем
-  lockInput("ПРИЦЕЛИВАНИЕ...");
-  setEnemyGridShootable(false);
-
-  try {
-    // Запрос и анимация снаряда параллельно
-    var apiPromise = apiPost({ action: "move", playerId: state.playerId, x: x, y: y });
-
-    document.getElementById("shootingNoticeText").textContent = "ВЫСТРЕЛ!";
-    // Запускаем анимацию снаряда (независимо от ответа API)
-    var targetCell = getEnemyCellElement(x, y);
-    await animateProjectile(targetCell);
-
-    document.getElementById("shootingNoticeText").textContent = "ОЖИДАНИЕ РЕЗУЛЬТАТА...";
-    // Ждём ответ API (он обычно уже готов к этому моменту)
-    var res = await apiPromise;
-
-    if (!res.ok) {
-      addLog("Ошибка: " + res.error, "miss");
-      unlockInput();
-      return;
+  if (view === "mine") {
+    myPanel.style.display    = ""; enemyPanel.style.display = "none";
+    myPanel.classList.add("active-mine"); myPanel.classList.remove("active-enemy");
+    btnMine.className  = "view-btn active-mine-btn";
+    btnEnemy.className = "view-btn";
+    if (animate) {
+      myPanel.classList.remove("board-entering-left","board-entering-right");
+      void myPanel.offsetWidth;
+      myPanel.classList.add("board-entering-left");
     }
-
-    // Показываем эффект результата на клетке-цели
-    var result = res.result || "miss";
-    await playImpactEffect(targetCell, result);
-
-    // Немедленно обновляем состояние (не ждём следующего polling)
-    if (res.gameOver) {
-      fetchState();
-    } else {
-      // Инкрементально обновляем выстрел локально
-      applyLocalShot(x, y, result);
-      // Переключаем вид и передаём ход
-      await handleTurnTransition(result, res);
-    }
-
-  } catch(e) {
-    console.error("Ошибка выстрела:", e);
-  }
-
-  unlockInput();
-}
-
-// ── ПОЛУЧИТЬ DOM-ЭЛЕМЕНТ КЛЕТКИ ПРОТИВНИКА ───────────────────
-function getEnemyCellElement(x, y) {
-  return document.querySelector('#enemyGrid .cell[data-x="' + x + '"][data-y="' + y + '"]');
-}
-function getMyCellElement(x, y) {
-  return document.querySelector('#myGrid .cell[data-x="' + x + '"][data-y="' + y + '"]');
-}
-
-// ── АНИМАЦИЯ СНАРЯДА (трассирующий снаряд) ──────────────────
-function animateProjectile(targetCell) {
-  return new Promise(function(resolve) {
-    var canvas = document.getElementById("projectileCanvas");
-    var ctx    = canvas.getContext("2d");
-    canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
-
-    if (!targetCell) { resolve(); return; }
-
-    // Старт — центр панели хода (баннер)
-    var badge = document.getElementById("turnBadge");
-    var startRect = badge.getBoundingClientRect();
-    var sx = startRect.left + startRect.width  / 2;
-    var sy = startRect.top  + startRect.height / 2;
-
-    // Финиш — центр целевой клетки
-    var endRect = targetCell.getBoundingClientRect();
-    var ex = endRect.left + endRect.width  / 2;
-    var ey = endRect.top  + endRect.height / 2;
-
-    // Дуга: контрольная точка чуть выше средней линии
-    var cpx = (sx + ex) / 2;
-    var cpy = Math.min(sy, ey) - Math.max(80, Math.abs(ey - sy) * 0.45);
-
-    var DURATION = 380;
-    var start = null;
-
-    // История позиций для линии следа
-    var history = [];
-    var TRAIL_LEN = 14;
-
-    function bezier(t, p0, p1, p2) {
-      var m = 1 - t;
-      return m * m * p0 + 2 * m * t * p1 + t * t * p2;
-    }
-
-    // Угол касательной для ориентации снаряда
-    function tangentAngle(t, sx, cpx, ex, sy, cpy, ey) {
-      var dt = 0.01;
-      var t2 = Math.min(t + dt, 1);
-      var dx = bezier(t2, sx, cpx, ex) - bezier(t, sx, cpx, ex);
-      var dy = bezier(t2, sy, cpy, ey) - bezier(t, sy, cpy, ey);
-      return Math.atan2(dy, dx);
-    }
-
-    function frame(ts) {
-      if (!start) start = ts;
-      var t = Math.min((ts - start) / DURATION, 1);
-
-      var cx = bezier(t, sx, cpx, ex);
-      var cy = bezier(t, sy, cpy, ey);
-      var angle = tangentAngle(t, sx, cpx, ex, sy, cpy, ey);
-
-      history.push({ x: cx, y: cy });
-      if (history.length > TRAIL_LEN) history.shift();
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // ── Рисуем линию следа (градиент от прозрачного к яркому) ──
-      if (history.length > 1) {
-        for (var i = 1; i < history.length; i++) {
-          var frac = i / history.length;
-          var lineW = frac * 2.5;
-          var alpha = frac * 0.65;
-
-          ctx.beginPath();
-          ctx.moveTo(history[i-1].x, history[i-1].y);
-          ctx.lineTo(history[i].x, history[i].y);
-          ctx.strokeStyle = "rgba(180,220,255," + alpha + ")";
-          ctx.lineWidth   = lineW;
-          ctx.lineCap     = "round";
-          ctx.stroke();
-        }
-      }
-
-      // ── Рисуем сам снаряд — вытянутый эллипс, ориентирован по движению ──
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(angle);
-
-      // Тело снаряда (вытянутый)
-      var bLen = 9, bRad = 2.5;
-      var grad = ctx.createLinearGradient(-bLen, 0, bLen, 0);
-      grad.addColorStop(0,   "rgba(140,200,255,0)");
-      grad.addColorStop(0.3, "rgba(200,230,255,0.7)");
-      grad.addColorStop(0.7, "rgba(255,255,255,1)");
-      grad.addColorStop(1,   "rgba(255,255,255,0.9)");
-
-      ctx.beginPath();
-      ctx.ellipse(0, 0, bLen, bRad, 0, 0, Math.PI * 2);
-      ctx.fillStyle = grad;
-      ctx.fill();
-
-      // Яркий носик
-      ctx.beginPath();
-      ctx.arc(bLen - 1, 0, bRad * 0.7, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(255,255,255,1)";
-      ctx.fill();
-
-      ctx.restore();
-
-      if (t < 1) {
-        requestAnimationFrame(frame);
-      } else {
-        // Небольшая вспышка на финише
-        var gr = ctx.createRadialGradient(ex, ey, 0, ex, ey, 18);
-        gr.addColorStop(0,   "rgba(255,255,255,0.9)");
-        gr.addColorStop(0.4, "rgba(180,220,255,0.5)");
-        gr.addColorStop(1,   "rgba(100,160,255,0)");
-        ctx.beginPath();
-        ctx.arc(ex, ey, 18, 0, Math.PI * 2);
-        ctx.fillStyle = gr;
-        ctx.fill();
-
-        setTimeout(function() {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          resolve();
-        }, 80);
-      }
-    }
-
-    requestAnimationFrame(frame);
-  });
-}
-
-// ── ЭФФЕКТ ПОПАДАНИЯ/ПРОМАХА ──────────────────────────────────
-function playImpactEffect(cell, result) {
-  return new Promise(function(resolve) {
-    if (!cell) { resolve(); return; }
-
-    if (result === "hit" || result === "sunk") {
-      // Взрыв
-      var fx = document.createElement("div");
-      fx.className = "fx-explosion";
-      cell.appendChild(fx);
-
-      // Встряска панели
-      var panel = document.getElementById("enemyBoardPanel");
-      panel.classList.remove("board-shake");
-      void panel.offsetWidth;
-      panel.classList.add("board-shake");
-
-      setTimeout(function() {
-        if (fx.parentNode) fx.parentNode.removeChild(fx);
-        panel.classList.remove("board-shake");
-        resolve();
-      }, 500);
-    } else {
-      // Промах — всплеск воды
-      var fx = document.createElement("div");
-      fx.className = "fx-splash";
-      cell.appendChild(fx);
-      setTimeout(function() {
-        if (fx.parentNode) fx.parentNode.removeChild(fx);
-        resolve();
-      }, 600);
-    }
-  });
-}
-
-// ── ЛОКАЛЬНОЕ ОБНОВЛЕНИЕ ВЫСТРЕЛА (без повторного polling) ────
-function applyLocalShot(x, y, result) {
-  if (!state.gameState) return;
-  var shots = state.mySlot === 1 ? state.gameState.shotsP1 : state.gameState.shotsP2;
-  // Проверяем нет ли дублей
-  for (var i = 0; i < shots.length; i++) {
-    if (shots[i].x === x && shots[i].y === y) return;
-  }
-  shots.push({ x: x, y: y, result: result });
-
-  // Обновляем клетку на поле противника
-  var cell = getEnemyCellElement(x, y);
-  if (cell) {
-    cell.className = "cell enemy-cell";
-    if (result === "sunk")     cell.classList.add("sunk");
-    else if (result === "hit") cell.classList.add("hit");
-    else                       cell.classList.add("miss");
-  }
-
-  // При потоплении — обводим все соседние незатронутые клетки точками промаха
-  if (result === "sunk") {
-    markSunkNeighbors(shots);
-  }
-
-  // Журнал
-  var resText = result === "hit" ? "Попадание" : result === "sunk" ? "Потоплен" : "Промах";
-  addLog("Вы → " + COL_LABELS[x] + ROW_LABELS[y] + ": " + resText, result);
-}
-
-// ── ПОМЕТИТЬ СОСЕДЕЙ ПОТОПЛЕННОГО КОРАБЛЯ ────────────────────
-// Находим весь корабль по цепочке hit/sunk и обводим периметр промахами
-function markSunkNeighbors(shots) {
-  // Строим карту выстрелов
-  var shotMap = {};
-  shots.forEach(function(s) { shotMap[s.y + "_" + s.x] = s.result; });
-
-  // Находим все клетки корабля (sunk)
-  var sunkCells = shots.filter(function(s) { return s.result === "sunk"; });
-
-  // Для каждой sunk-клетки обходим соседей (включая диагонали)
-  sunkCells.forEach(function(sc) {
-    for (var dy = -1; dy <= 1; dy++) {
-      for (var dx = -1; dx <= 1; dx++) {
-        if (dy === 0 && dx === 0) continue;
-        var nx = sc.x + dx, ny = sc.y + dy;
-        if (nx < 0 || nx > 9 || ny < 0 || ny > 9) continue;
-        var key = ny + "_" + nx;
-        if (shotMap[key]) continue; // уже есть выстрел
-
-        // Добавляем фантомный промах
-        shotMap[key] = "miss";
-        shots.push({ x: nx, y: ny, result: "miss" });
-
-        var cell = getEnemyCellElement(nx, ny);
-        if (cell && !cell.classList.contains("hit") && !cell.classList.contains("sunk") && !cell.classList.contains("miss")) {
-          cell.className = "cell enemy-cell miss";
-        }
-      }
-    }
-  });
-}
-
-// ── ПЕРЕКЛЮЧЕНИЕ ХОДА ПОСЛЕ ВЫСТРЕЛА ─────────────────────────
-async function handleTurnTransition(result, res) {
-  if (result === "hit" || result === "sunk") {
-    // Попадание — ход остаётся у нас, остаёмся на поле противника
-    // Только кратко показываем "ЕЩЁ РАЗ!"
-    await showPhaseAnnouncement("🎯 ПОПАДАНИЕ! ЕЩЁ РАЗ!", "my");
-    setEnemyGridShootable(true);
-    // После разблокировки polling сам обновит состояние
   } else {
-    // Промах — переключаем на своё поле (противник ходит)
-    await showPhaseAnnouncement("💦 ПРОМАХ! ХОД ПРОТИВНИКА", "enemy");
-    // Переключаем на своё поле с анимацией
-    switchView("mine", true);
-    updateTurnBadge(false, getEnemyName());
+    myPanel.style.display    = "none"; enemyPanel.style.display = "";
+    enemyPanel.classList.add("active-enemy"); enemyPanel.classList.remove("active-mine");
+    btnMine.className  = "view-btn";
+    btnEnemy.className = "view-btn active-enemy-btn";
+    if (animate) {
+      enemyPanel.classList.remove("board-entering-left","board-entering-right");
+      void enemyPanel.offsetWidth;
+      enemyPanel.classList.add("board-entering-right");
+    }
   }
 }
 
-function getEnemyName() {
-  var gs = state.gameState;
-  if (!gs || !gs.players) return "ПРОТИВНИК";
-  var enemy = gs.players.filter(function(p){ return p.playerId !== state.playerId; })[0];
-  return enemy ? enemy.nickname.toUpperCase() : "ПРОТИВНИК";
+function updateTurnBadge(isMyTurn, enemyName) {
+  var badge = document.getElementById("turnBadge");
+  if (isMyTurn) {
+    badge.className = "turn-badge my-turn"; badge.textContent = "⚡ ВАШ ХОД";
+  } else {
+    badge.className = "turn-badge enemy-turn"; badge.textContent = "⏳ " + (enemyName||"ПРОТИВНИК") + "'S TURN";
+  }
 }
 
-// ── POLLING СОСТОЯНИЯ ─────────────────────────────────────────
-function startPolling() {
-  fetchState();
-  state.pollTimer = setInterval(fetchState, POLL_INTERVAL);
+// ── ИНДИКАТОР ХОДА ПРОТИВНИКА ──────────────────────────
+function setThinkingBar(visible, enemyName) {
+  var bar = document.getElementById("thinkingBar");
+  if (visible) {
+    bar.classList.add("show");
+    document.getElementById("thinkingBarText").textContent = (enemyName||"OPPONENT") + " ДУМАЕТ...";
+  } else {
+    bar.classList.remove("show");
+  }
 }
-function stopPolling() {
-  if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
-}
+
+// ── ОПРОС СОСТОЯНИЯ ───────────────────────────────────────────────
+function startPolling() { fetchState(); state.pollTimer = setInterval(fetchState, POLL_INTERVAL); }
+function stopPolling()  { if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; } }
 
 async function fetchState() {
-  if (state.inputLocked) return; // не прерываем анимацию
+  if (state.inputLocked) return;
   var dot = document.getElementById("pollingDot");
   dot.classList.add("active");
   try {
-    var gs = await apiGet({ playerId: state.playerId });
+    var gs = await apiGet({ action:"state", playerId:state.playerId, roomId:state.roomId });
     dot.classList.remove("active");
-    if (!gs.ok) return;
+    if (!gs.ok) {
+      if (gs.roomGone) {
+        stopPolling(); clearSession();
+        showLobbyScreen(); return;
+      }
+      return;
+    }
     processGameState(gs);
-  } catch(e) {
-    dot.classList.remove("active");
-  }
+  } catch(e) { dot.classList.remove("active"); }
 }
 
-// ── ОБРАБОТКА СОСТОЯНИЯ ───────────────────────────────────────
+// ── ОБРАБОТКА СОСТОЯНИЯ ─────────────────────────────────────────
 function processGameState(gs) {
   var prevState = state.gameState;
   state.gameState = gs;
-
   if (gs.myBoard) state.myBoard = gs.myBoard;
-
-  // Захват
-  if (gs.pendingTakeover && state.playerId) {
-    var takeoverInfo = gs.pendingTakeover;
-    if (takeoverInfo.slot === state.mySlot) showIncomingTakeover(takeoverInfo);
+  if (gs.mySlot && !state.mySlot) {
+    state.mySlot = gs.mySlot; saveSession();
   }
 
   updateStatusBar(gs);
@@ -1635,6 +1000,7 @@ function processGameState(gs) {
   if (gs.phase === "waiting") {
     document.getElementById("waitingBlock").style.display = "block";
     document.getElementById("boardsBlock").style.display  = "none";
+    setThinkingBar(false);
     return;
   }
 
@@ -1644,96 +1010,88 @@ function processGameState(gs) {
   renderMyBoard(gs);
   renderEnemyBoard(gs);
 
-  var isMyTurn = (gs.phase === "playing" && gs.turn === state.playerId);
-  var enemy = gs.players ? gs.players.filter(function(p){ return p.playerId !== state.playerId; })[0] : null;
-  var enemyName = enemy ? enemy.nickname : "ПРОТИВНИК";
-
-  // Определяем смену хода (пришло из polling)
+  var isMyTurn   = gs.phase === "playing" && gs.turn === state.playerId;
+  var enemy      = gs.players ? gs.players.filter(function(p){ return p.playerId !== state.playerId; })[0] : null;
+  var enemyName  = enemy ? enemy.nickname.toUpperCase() : "ПРОТИВНИК";
   var turnChanged = prevState && prevState.turn !== gs.turn && !state.inputLocked;
+
+  // Opponent thinking indicator
+  if (gs.phase === "playing") {
+    setThinkingBar(!isMyTurn, enemyName);
+  } else {
+    setThinkingBar(false);
+  }
 
   if (turnChanged && !state.inputLocked) {
     if (isMyTurn) {
-      // Стало нашим ходом — переключаемся на поле противника
       (async function() {
-        await showPhaseAnnouncement("⚡ ВАШ ХОД!", "my");
+        await showAnnouncement("⚡ ВАШ ХОД!", "my");
         switchView("enemy", true);
         updateTurnBadge(true, enemyName);
-        setEnemyGridShootable(true);
+        setEnemyShootable(true);
       })();
     } else {
-      // Не наш ход
       switchView("mine", true);
       updateTurnBadge(false, enemyName);
-      setEnemyGridShootable(false);
+      setEnemyShootable(false);
     }
   } else if (!state.inputLocked) {
-    // Первоначальная установка вида (при входе в игру или переподключении)
     if (isMyTurn) {
       if (state.currentView !== "enemy") switchView("enemy", false);
       updateTurnBadge(true, enemyName);
-      setEnemyGridShootable(true);
+      setEnemyShootable(true);
     } else {
       if (state.currentView !== "mine") switchView("mine", false);
       updateTurnBadge(false, enemyName);
-      setEnemyGridShootable(false);
+      setEnemyShootable(false);
     }
   }
 
-  // Новые выстрелы для журнала (только из polling, без дублирования)
-  updateLog(gs, prevState);
+  // Журнал новых выстрелов противника
+  updateEnemyLog(gs, prevState, enemyName);
 
   // Победитель
   if (gs.phase === "finished" && gs.winner && !state.winnerShown) {
-    state.winnerShown = true;
-    stopPolling();
+    state.winnerShown = true; stopPolling();
     showWinner(gs);
   }
 }
 
-// ── ОБНОВЛЕНИЕ СТАТУС-БАРА ────────────────────────────────────
+// ── СТАТУС-БАР ────────────────────────────────────────────
 function updateStatusBar(gs) {
   var enemy = gs.players ? gs.players.filter(function(p){ return p.playerId !== state.playerId; })[0] : null;
   document.getElementById("statusMe").textContent    = state.nickname || "—";
   document.getElementById("statusEnemy").textContent = enemy ? enemy.nickname : "Ожидание...";
-
-  var phaseMap = { waiting: "Ожидание", playing: "Игра идёт", finished: "Игра окончена" };
+  var phaseMap = { waiting:"Ожидание", playing:"Бой идёт!", finished:"Игра окончена" };
   var dot = document.getElementById("phaseDot");
-  dot.className = "phase-dot " + (gs.phase || "waiting");
+  dot.className = "phase-dot " + (gs.phase||"waiting");
   document.getElementById("statusPhase").textContent = phaseMap[gs.phase] || gs.phase;
-
   var turnPlayer = gs.players ? gs.players.filter(function(p){ return p.playerId === gs.turn; })[0] : null;
   var turnEl = document.getElementById("statusTurn");
-  if (!turnPlayer) {
-    turnEl.textContent = "—"; turnEl.classList.remove("active");
-  } else {
+  if (!turnPlayer) { turnEl.textContent = "—"; turnEl.classList.remove("active"); }
+  else {
     turnEl.textContent = turnPlayer.nickname;
-    if (gs.turn === state.playerId) {
-      turnEl.textContent += " (ВАШ ХОД)";
-      turnEl.classList.add("active");
-    } else {
-      turnEl.classList.remove("active");
-    }
+    if (gs.turn === state.playerId) { turnEl.textContent += " (ВАШ ХОД)"; turnEl.classList.add("active"); }
+    else turnEl.classList.remove("active");
   }
 }
 
-// ── РЕНДЕР СВОЕГО ПОЛЯ ────────────────────────────────────────
+// ── РЕНДЕР СВОЕГО ПОЛЯ ───────────────────────────────────────
 function renderMyBoard(gs) {
-  var board = state.myBoard;
-  if (!board) return;
+  var board = state.myBoard; if (!board) return;
   var enemyShots = state.mySlot === 1 ? gs.shotsP2 : gs.shotsP1;
   var shotMap = {};
   if (enemyShots) enemyShots.forEach(function(s){ shotMap[s.y+"_"+s.x] = s.result; });
 
-  var cells = document.querySelectorAll("#myGrid .cell");
-  cells.forEach(function(cell) {
-    var x = parseInt(cell.dataset.x), y = parseInt(cell.dataset.y);
+  document.querySelectorAll("#myGrid .cell").forEach(function(cell) {
+    var x = +cell.dataset.x, y = +cell.dataset.y;
     var shot = shotMap[y+"_"+x];
-    var cellVal = board[y][x];
+    var v    = board[y][x];
     cell.className = "cell";
-    if      (shot === "sunk")  cell.classList.add("my-sunk");
-    else if (shot === "hit")   cell.classList.add("my-hit");
-    else if (shot === "miss")  cell.classList.add("miss");
-    else if (cellVal === 1 || cellVal === 2) cell.classList.add("ship");
+    if      (shot === "sunk") cell.classList.add("my-sunk");
+    else if (shot === "hit")  cell.classList.add("my-hit");
+    else if (shot === "miss") cell.classList.add("miss");
+    else if (v === 1 || v === 2 || v === 3) cell.classList.add("ship");
   });
 }
 
@@ -1743,25 +1101,23 @@ function renderEnemyBoard(gs) {
   var shotMap = {};
   if (myShots) myShots.forEach(function(s){ shotMap[s.y+"_"+s.x] = s.result; });
 
-  // Добавляем фантомные промахи вокруг потопленных кораблей
+  // Фантомные промахи вокруг потопленных кораблей
   if (myShots) {
-    var sunkCells = myShots.filter(function(s){ return s.result === "sunk"; });
-    sunkCells.forEach(function(sc) {
+    myShots.filter(function(s){ return s.result === "sunk"; }).forEach(function(sc) {
       for (var dy = -1; dy <= 1; dy++) {
         for (var dx = -1; dx <= 1; dx++) {
-          if (dy === 0 && dx === 0) continue;
-          var nx = sc.x + dx, ny = sc.y + dy;
-          if (nx < 0 || nx > 9 || ny < 0 || ny > 9) continue;
-          var key = ny + "_" + nx;
-          if (!shotMap[key]) shotMap[key] = "miss-border";
+          if (!dy && !dx) continue;
+          var nx = sc.x+dx, ny = sc.y+dy;
+          if (nx<0||nx>9||ny<0||ny>9) continue;
+          var k = ny+"_"+nx;
+          if (!shotMap[k]) shotMap[k] = "miss-border";
         }
       }
     });
   }
 
-  var cells = document.querySelectorAll("#enemyGrid .cell");
-  cells.forEach(function(cell) {
-    var x = parseInt(cell.dataset.x), y = parseInt(cell.dataset.y);
+  document.querySelectorAll("#enemyGrid .cell").forEach(function(cell) {
+    var x = +cell.dataset.x, y = +cell.dataset.y;
     var shot = shotMap[y+"_"+x];
     cell.className = "cell enemy-cell";
     if      (shot === "sunk")        cell.classList.add("sunk");
@@ -1771,40 +1127,23 @@ function renderEnemyBoard(gs) {
   });
 }
 
-// ── КЛИКАБЕЛЬНОСТЬ ПОЛЯ ПРОТИВНИКА ───────────────────────────
-function setEnemyGridShootable(enabled) {
-  var cells = document.querySelectorAll("#enemyGrid .cell");
-  cells.forEach(function(cell) {
-    if (enabled && !cell.classList.contains("hit") &&
-        !cell.classList.contains("miss") &&
-        !cell.classList.contains("sunk")) {
+function setEnemyShootable(enabled) {
+  document.querySelectorAll("#enemyGrid .cell").forEach(function(cell) {
+    if (enabled && !cell.classList.contains("hit") && !cell.classList.contains("miss") && !cell.classList.contains("sunk")) {
       cell.classList.add("shootable");
-    } else {
-      cell.classList.remove("shootable");
-    }
+    } else { cell.classList.remove("shootable"); }
   });
 }
 
-// ── ЖУРНАЛ ХОДОВ ─────────────────────────────────────────────
-function updateLog(gs, prevState) {
-  // Используем счётчики для предотвращения дублирования с localShot
-  var myShots    = state.mySlot === 1 ? gs.shotsP1 : gs.shotsP2;
+// ── ЖУРНАЛ ───────────────────────────────────────────────────
+function updateEnemyLog(gs, prevState, enemyName) {
   var enemyShots = state.mySlot === 1 ? gs.shotsP2 : gs.shotsP1;
-  var prevMy     = prevState ? (state.mySlot === 1 ? prevState.shotsP1 : prevState.shotsP2) : [];
   var prevEnemy  = prevState ? (state.mySlot === 1 ? prevState.shotsP2 : prevState.shotsP1) : [];
-
-  // Новые мои выстрелы (только если не было localShot — проверяем по длине)
-  // localShot уже добавляет в журнал, поэтому пропускаем если длины совпадают
-  // Для безопасности: добавляем только если больше чем в prevState (с задержкой)
-
-  // Новые выстрелы противника (их localShot не добавляет)
-  var enemy = gs.players ? gs.players.filter(function(p){ return p.playerId !== state.playerId; })[0] : null;
-  var enemyName = enemy ? enemy.nickname : "Противник";
-  if (enemyShots && enemyShots.length > (prevEnemy ? prevEnemy.length : 0)) {
-    for (var j = (prevEnemy ? prevEnemy.length : 0); j < enemyShots.length; j++) {
+  if (enemyShots && enemyShots.length > (prevEnemy||[]).length) {
+    for (var j = (prevEnemy||[]).length; j < enemyShots.length; j++) {
       var es = enemyShots[j];
-      var eText = es.result === "hit" ? "Попадание!" : es.result === "sunk" ? "Потопил!" : "Промах";
-      addLog(enemyName + " → " + COL_LABELS[es.x] + ROW_LABELS[es.y] + ": " + eText, es.result);
+      var t  = es.result === "hit" ? "Попадание!" : es.result === "sunk" ? "Потоплен!" : "Промах";
+      addLog(enemyName + " → " + COL_LABELS[es.x] + ROW_LABELS[es.y] + ": " + t, es.result);
     }
   }
 }
@@ -1813,78 +1152,249 @@ function addLog(text, type) {
   var list = document.getElementById("logList");
   var li   = document.createElement("li");
   var now  = new Date();
-  var ts   = pad(now.getHours()) + ":" + pad(now.getMinutes()) + ":" + pad(now.getSeconds());
-  li.className = "log-entry " + (type || "miss");
-  li.innerHTML = '<span class="ts">' + ts + '</span>' + text;
+  var ts   = pad(now.getHours())+":"+pad(now.getMinutes())+":"+pad(now.getSeconds());
+  li.className = "log-entry " + (type||"miss");
+  li.innerHTML = '<span class="ts">'+ts+'</span>'+escHtml(text);
   list.insertBefore(li, list.firstChild);
   while (list.children.length > 50) list.removeChild(list.lastChild);
 }
+function pad(n) { return n < 10 ? "0"+n : String(n); }
 
-function pad(n) { return n < 10 ? "0" + n : String(n); }
+// ── ВЫСТРЕЛ ─────────────────────────────────────────────────
+async function shoot(x, y) {
+  if (state.inputLocked) return;
+  var gs = state.gameState;
+  if (!gs || gs.phase !== "playing") return;
+  if (gs.turn !== state.playerId) return;
+
+  // Уже стреляли сюда?
+  var myShots = state.mySlot === 1 ? gs.shotsP1 : gs.shotsP2;
+  for (var i = 0; i < myShots.length; i++) {
+    if (myShots[i].x === x && myShots[i].y === y) return;
+  }
+
+  lockInput("ПРИЦЕЛИВАНИЕ...");
+  setEnemyShootable(false);
+
+  try {
+    var apiPromise = apiPost({ action:"move", playerId:state.playerId, roomId:state.roomId, x:x, y:y });
+    document.getElementById("shootingNoticeText").textContent = "СНАРЯД В ПОЛЁТЕ!";
+    var targetCell = getEnemyCell(x, y);
+    await animateProjectile(targetCell);
+
+    document.getElementById("shootingNoticeText").textContent = "ОЖИДАЕМ РЕЗУЛЬТАТ...";
+    var res = await apiPromise;
+
+    if (!res.ok) { addLog("Ошибка: " + res.error, "miss"); unlockInput(); return; }
+
+    var result = res.result || "miss";
+    await playImpact(targetCell, result);
+
+    if (res.gameOver) {
+      fetchState();
+    } else {
+      applyLocalShot(x, y, result);
+      await handleTurnTransition(result);
+    }
+  } catch(e) { console.error("Ошибка выстрела:", e); }
+  unlockInput();
+}
+
+function getEnemyCell(x, y) {
+  return document.querySelector('#enemyGrid .cell[data-x="'+x+'"][data-y="'+y+'"]');
+}
+
+// ── ЛОКАЛЬНОЕ ОБНОВЛЕНИЕ ВЫСТРЕЛА ─────────────────────────────────────
+function applyLocalShot(x, y, result) {
+  if (!state.gameState) return;
+  var shots = state.mySlot === 1 ? state.gameState.shotsP1 : state.gameState.shotsP2;
+  for (var i = 0; i < shots.length; i++) { if (shots[i].x === x && shots[i].y === y) return; }
+  shots.push({ x:x, y:y, result:result });
+
+  var cell = getEnemyCell(x, y);
+  if (cell) {
+    cell.className = "cell enemy-cell";
+    if      (result === "sunk") cell.classList.add("sunk");
+    else if (result === "hit")  cell.classList.add("hit");
+    else                        cell.classList.add("miss");
+  }
+
+  if (result === "sunk") markSunkNeighbors(shots);
+
+  var t = result === "hit" ? "Попадание" : result === "sunk" ? "ПОТОПЛЕН!" : "Промах";
+  addLog("Вы → " + COL_LABELS[x] + ROW_LABELS[y] + ": " + t, result);
+}
+
+function markSunkNeighbors(shots) {
+  var shotMap = {};
+  shots.forEach(function(s){ shotMap[s.y+"_"+s.x] = s.result; });
+  shots.filter(function(s){ return s.result === "sunk"; }).forEach(function(sc) {
+    for (var dy = -1; dy <= 1; dy++) {
+      for (var dx = -1; dx <= 1; dx++) {
+        if (!dy && !dx) continue;
+        var nx = sc.x+dx, ny = sc.y+dy;
+        if (nx<0||nx>9||ny<0||ny>9) continue;
+        var key = ny+"_"+nx;
+        if (shotMap[key]) continue;
+        shotMap[key] = "miss"; shots.push({ x:nx, y:ny, result:"miss" });
+        var cell = getEnemyCell(nx, ny);
+        if (cell && !cell.classList.contains("hit") && !cell.classList.contains("sunk") && !cell.classList.contains("miss")) {
+          cell.className = "cell enemy-cell miss";
+        }
+      }
+    }
+  });
+}
+
+// ── ПЕРЕХОД ХОДА ───────────────────────────────────────
+async function handleTurnTransition(result) {
+  var enemyName = getEnemyName();
+  if (result === "hit" || result === "sunk") {
+    await showAnnouncement("🎯 ПОПАДАНИЕ! ЕЩЁ РАЗ!", "my");
+    setEnemyShootable(true);
+  } else {
+    await showAnnouncement("💦 ПРОМАХ! ХОД ПРОТИВНИКА", "enemy");
+    switchView("mine", true);
+    updateTurnBadge(false, enemyName);
+    setThinkingBar(true, enemyName);
+  }
+}
+
+function getEnemyName() {
+  var gs = state.gameState;
+  if (!gs || !gs.players) return "ПРОТИВНИК";
+  var e = gs.players.filter(function(p){ return p.playerId !== state.playerId; })[0];
+  return e ? e.nickname.toUpperCase() : "ПРОТИВНИК";
+}
+
+// ── АНИМАЦИЯ СНАРЯДА ──────────────────────────────────
+function animateProjectile(targetCell) {
+  return new Promise(function(resolve) {
+    var canvas = document.getElementById("projectileCanvas");
+    var ctx    = canvas.getContext("2d");
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+    if (!targetCell) { resolve(); return; }
+
+    var badge   = document.getElementById("turnBadge");
+    var sr      = badge.getBoundingClientRect();
+    var sx      = sr.left + sr.width/2, sy = sr.top + sr.height/2;
+    var er      = targetCell.getBoundingClientRect();
+    var ex      = er.left + er.width/2, ey = er.top + er.height/2;
+    var cpx     = (sx+ex)/2;
+    var cpy     = Math.min(sy,ey) - Math.max(60, Math.abs(ey-sy)*0.4);
+    var DURATION = 360, start = null, history = [];
+
+    function bezier(t,p0,p1,p2) { var m=1-t; return m*m*p0+2*m*t*p1+t*t*p2; }
+    function angle(t) {
+      var dt=.01, t2=Math.min(t+dt,1);
+      return Math.atan2(bezier(t2,sy,cpy,ey)-bezier(t,sy,cpy,ey), bezier(t2,sx,cpx,ex)-bezier(t,sx,cpx,ex));
+    }
+
+    function frame(ts) {
+      if (!start) start = ts;
+      var t  = Math.min((ts-start)/DURATION, 1);
+      var cx = bezier(t,sx,cpx,ex), cy = bezier(t,sy,cpy,ey);
+      history.push({x:cx,y:cy}); if (history.length > 12) history.shift();
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      if (history.length > 1) {
+        for (var i = 1; i < history.length; i++) {
+          var f = i/history.length;
+          ctx.beginPath(); ctx.moveTo(history[i-1].x,history[i-1].y); ctx.lineTo(history[i].x,history[i].y);
+          ctx.strokeStyle="rgba(180,220,255,"+f*.6+")"; ctx.lineWidth=f*2.5; ctx.lineCap="round"; ctx.stroke();
+        }
+      }
+      ctx.save(); ctx.translate(cx,cy); ctx.rotate(angle(t));
+      var g = ctx.createLinearGradient(-9,0,9,0);
+      g.addColorStop(0,"rgba(140,200,255,0)"); g.addColorStop(.3,"rgba(200,230,255,.7)");
+      g.addColorStop(.7,"rgba(255,255,255,1)"); g.addColorStop(1,"rgba(255,255,255,.9)");
+      ctx.beginPath(); ctx.ellipse(0,0,9,2.5,0,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
+      ctx.beginPath(); ctx.arc(8,0,1.8,0,Math.PI*2); ctx.fillStyle="rgba(255,255,255,1)"; ctx.fill();
+      ctx.restore();
+      if (t < 1) requestAnimationFrame(frame);
+      else {
+        var gr = ctx.createRadialGradient(ex,ey,0,ex,ey,16);
+        gr.addColorStop(0,"rgba(255,255,255,.9)"); gr.addColorStop(.4,"rgba(180,220,255,.5)"); gr.addColorStop(1,"rgba(100,160,255,0)");
+        ctx.beginPath(); ctx.arc(ex,ey,16,0,Math.PI*2); ctx.fillStyle=gr; ctx.fill();
+        setTimeout(function(){ ctx.clearRect(0,0,canvas.width,canvas.height); resolve(); }, 70);
+      }
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+// ── ЭФФЕКТЫ ПОПАДАНИЯ ────────────────────────────────────────
+function playImpact(cell, result) {
+  return new Promise(function(resolve) {
+    if (!cell) { resolve(); return; }
+    var fx = document.createElement("div");
+    fx.className = (result === "hit" || result === "sunk") ? "fx-explosion" : "fx-splash";
+    cell.appendChild(fx);
+    if (result === "hit" || result === "sunk") {
+      var panel = document.getElementById("enemyBoardPanel");
+      panel.classList.remove("board-shake"); void panel.offsetWidth; panel.classList.add("board-shake");
+      setTimeout(function(){ if (fx.parentNode) fx.parentNode.removeChild(fx); panel.classList.remove("board-shake"); resolve(); }, 500);
+    } else {
+      setTimeout(function(){ if (fx.parentNode) fx.parentNode.removeChild(fx); resolve(); }, 600);
+    }
+  });
+}
 
 // ── ПОБЕДИТЕЛЬ ────────────────────────────────────────────────
 function showWinner(gs) {
-  var overlay      = document.getElementById("winnerOverlay");
-  var winnerPlayer = gs.players ? gs.players.filter(function(p){ return p.playerId === gs.winner; })[0] : null;
-  var winnerName   = winnerPlayer ? winnerPlayer.nickname : "Неизвестный";
-  var isMe         = gs.winner === state.playerId;
-  document.getElementById("winnerName").textContent = isMe ? "ВЫ ПОБЕДИЛИ!" : winnerName.toUpperCase();
-  document.getElementById("winnerMsg").textContent  = isMe ? "Все корабли противника потоплены!" : "одержал победу в морском бою";
-  overlay.classList.add("show");
-}
-function closeWinner() { document.getElementById("winnerOverlay").classList.remove("show"); }
-
-// ── ВЫХОД ────────────────────────────────────────────────────
-function leaveGame() {
-  if (state.playerId) apiPost({ action: "leave", playerId: state.playerId }).catch(function(){});
-  stopPolling();
-  if (state.takeoverTimer) clearInterval(state.takeoverTimer);
-  clearSession();
-  state.gameState   = null;
-  state.winnerShown = false;
-  state.pendingTakeover = null;
-  state.currentView = "mine";
-  state.inputLocked = false;
-  unlockInput();
-  document.getElementById("loginScreen").style.display = "flex";
-  document.getElementById("gameScreen").style.display  = "none";
-  document.getElementById("loginMsg").innerHTML = "";
-  document.getElementById("logList").innerHTML  = "";
-  document.getElementById("winnerOverlay").classList.remove("show");
-  document.getElementById("takeoverOverlay").classList.remove("show");
+  var wp  = gs.players ? gs.players.filter(function(p){ return p.playerId === gs.winner; })[0] : null;
+  var isMe = gs.winner === state.playerId;
+  document.getElementById("winnerName").textContent = isMe ? "ПОБЕДА!" : (wp ? wp.nickname.toUpperCase() : "ПРОТИВНИК") + " ПОБЕДИЛ";
+  document.getElementById("winnerMsg").textContent  = isMe ? "Вы потопили все корабли противника!" : "Все ваши корабли потоплены.";
+  document.getElementById("winnerOverlay").classList.add("show");
 }
 
-// ── ПЕРЕЗАПУСК (ADMIN) ────────────────────────────────────────
-async function restartGame() {
-  var pwd = document.getElementById("adminPassword").value.trim();
-  if (!pwd) { alert("Введите пароль"); return; }
+async function rematch() {
+  document.getElementById("btnRematch").disabled = true;
   try {
-    var res = await apiPost({ action: "restart", password: pwd });
+    var res = await apiPost({ action:"newgame", playerId:state.playerId, roomId:state.roomId });
     if (res.ok) {
       state.winnerShown = false;
       document.getElementById("winnerOverlay").classList.remove("show");
-      alert("Игра перезапущена");
-      leaveGame();
-    } else { alert("Ошибка: " + res.error); }
-  } catch(e) { alert("Ошибка запроса"); }
+      document.getElementById("logList").innerHTML = "";
+      startPolling();
+    } else {
+      document.getElementById("winnerName").textContent = res.error;
+    }
+  } catch(e) {}
+  document.getElementById("btnRematch").disabled = false;
 }
 
-// ── ИНИЦИАЛИЗАЦИЯ ─────────────────────────────────────────────
+// ── ВЫХОД ─────────────────────────────────────────────────
+function leaveGame() {
+  if (state.playerId && state.roomId) {
+    apiPost({ action:"leave", playerId:state.playerId, roomId:state.roomId }).catch(function(){});
+  }
+  stopPolling();
+  if (state.lobbyRefreshTimer) clearInterval(state.lobbyRefreshTimer);
+  clearSession();
+  state.winnerShown = false; state.currentView = "mine"; state.inputLocked = false;
+  unlockInput();
+  document.getElementById("winnerOverlay").classList.remove("show");
+  document.getElementById("logList").innerHTML = "";
+  showLobbyScreen();
+}
+
+// ── ИНИЦИАЛИЗАЦИЯ ──────────────────────────────────────────────────
 (function init() {
-  // Ресайз canvas при изменении окна
   window.addEventListener("resize", function() {
-    var canvas = document.getElementById("projectileCanvas");
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    var c = document.getElementById("projectileCanvas");
+    c.width = window.innerWidth; c.height = window.innerHeight;
   });
 
-  if (loadSession()) enterGameScreen();
+  // Попытка переподключения из сохранённой сессии
+  if (loadSession()) {
+    tryReconnect();
+  } else {
+    showLobbyScreen();
+  }
 
   document.getElementById("inNickname").addEventListener("keydown", function(e) {
-    if (e.key === "Enter") joinGame();
-  });
-  document.getElementById("inPassword").addEventListener("keydown", function(e) {
-    if (e.key === "Enter") forceJoin();
+    if (e.key === "Enter") createRoom();
   });
 })();
 </script>
