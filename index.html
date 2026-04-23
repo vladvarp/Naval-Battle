@@ -543,7 +543,6 @@ input:focus { border-color:var(--foam); box-shadow:0 0 0 3px rgba(26,159,212,.15
     </div>
 
     <div id="lobbyListWrap">
-      <div id="lobbySpinner" style="margin:12px 0;"><div class="spinner"></div></div>
       <div class="lobby-list" id="lobbyList"></div>
     </div>
 
@@ -687,6 +686,7 @@ var state = {
   inputLocked:  false,
   currentView:  "mine",
   prevTurn:     null,
+  roomsFound:   false,
 };
 
 var COL_LABELS = ["A","B","C","D","E","F","G","H","I","J"];
@@ -765,16 +765,27 @@ function showAnnouncement(text, type) {
 
 // ── ЛОББИ ─────────────────────────────────────────────────
 async function refreshLobby() {
-  document.getElementById("lobbySpinner").style.display = "block";
+  var list = document.getElementById("lobbyList");
+
+  // Show glowing "Нет открытых комнат" while checking, but only if no rooms have been found yet
+  if (!state.roomsFound) {
+    list.innerHTML = '<div style="font-size:11px;letter-spacing:1px;color:var(--foam);text-align:center;padding:8px 0;text-shadow:0 0 10px var(--foam);">Нет открытых комнат</div>';
+  }
+
   try {
     var res = await apiGet({ action:"lobby" });
-    document.getElementById("lobbySpinner").style.display = "none";
-    var list = document.getElementById("lobbyList");
     list.innerHTML = "";
     if (!res.ok || !res.rooms || res.rooms.length === 0) {
+      // If no rooms and we had rooms before, rooms disappeared - reset flag and show text
+      if (state.roomsFound) {
+        state.roomsFound = false;
+      }
       list.innerHTML = '<div style="font-size:11px;letter-spacing:1px;color:rgba(168,228,255,.35);text-align:center;padding:8px 0;">Нет открытых комнат</div>';
       return;
     }
+
+    // Rooms found - set flag and show rooms (no text)
+    state.roomsFound = true;
     res.rooms.forEach(function(room) {
       var div = document.createElement("div");
       div.className = "lobby-room";
@@ -787,8 +798,7 @@ async function refreshLobby() {
       list.appendChild(div);
     });
   } catch(e) {
-    document.getElementById("lobbySpinner").style.display = "none";
-    document.getElementById("lobbyList").innerHTML =
+    list.innerHTML =
       '<div style="font-size:11px;color:rgba(255,100,100,.6);text-align:center;padding:4px 0;">Ошибка подключения. Проверьте URL API.</div>';
   }
 }
@@ -858,6 +868,7 @@ async function tryReconnect() {
 function showLobbyScreen() {
   document.getElementById("lobbyScreen").classList.add("active");
   document.getElementById("gameScreen").classList.remove("active");
+  state.roomsFound = false; // Reset flag when entering lobby
   refreshLobby();
   // Автообновление лобби каждые 5 секунд
   if (state.lobbyRefreshTimer) clearInterval(state.lobbyRefreshTimer);
