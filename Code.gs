@@ -1,22 +1,23 @@
 // ============================================================
 // МОРСКОЙ БОЙ — Google Apps Script Backend
-// Версия: 1.0
+// Версия: 2.0 — Система комнат
 // Все комментарии на русском языке
 // ============================================================
 
 // ── НАСТРОЙКИ ──────────────────────────────────────────────
-var ADMIN_PASSWORD = "kokos666";       // Пароль для принудительного входа
-var SHEET_NAME_PLAYERS  = "Игроки";   // Название листа с игроками
-var SHEET_NAME_STATE    = "Состояние";// Название листа с состоянием игры
-var SHEET_NAME_LOG      = "Журнал";   // Название листа журнала ходов
+var ADMIN_PASSWORD      = "kokos666";
+var SHEET_NAME_ROOMS    = "Комнаты";
+var SHEET_NAME_PLAYERS  = "Игроки";
+var SHEET_NAME_STATE    = "Состояние";
+var SHEET_NAME_LOG      = "Журнал";
+var ROOM_TIMEOUT_MS     = 10 * 60 * 1000; // 10 минут бездействия
 
 // ── ОБРАБОТЧИК GET-ЗАПРОСОВ ─────────────────────────────────
 function doGet(e) {
   var action = e.parameter.action || "";
   try {
-    if (action === "state") {
-      return jsonResponse(getState(e.parameter.playerId));
-    }
+    if (action === "state")    return jsonResponse(getState(e.parameter.playerId, e.parameter.roomId));
+    if (action === "getRooms") return jsonResponse(getRooms());
     return jsonResponse({ ok: false, error: "Неизвестное действие" });
   } catch (err) {
     return jsonResponse({ ok: false, error: err.message });
@@ -34,12 +35,10 @@ function doPost(e) {
 
   var action = data.action || "";
   try {
-    if (action === "join")          return jsonResponse(joinGame(data));
-    if (action === "forceJoin")   return jsonResponse(forceJoin(data));
+    if (action === "createRoom") return jsonResponse(createRoom(data));
+    if (action === "joinRoom")   return jsonResponse(joinRoom(data));
     if (action === "move")       return jsonResponse(makeMove(data));
     if (action === "restart")    return jsonResponse(restartGame(data));
-    if (action === "acceptTakeover") return jsonResponse(acceptTakeover(data));
-    if (action === "denyTakeover")  return jsonResponse(denyTakeover(data));
     if (action === "leave")      return jsonResponse(leaveGame(data));
     return jsonResponse({ ok: false, error: "Неизвестное действие: " + action });
   } catch (err) {
@@ -58,129 +57,48 @@ function jsonResponse(obj) {
 function getSheet(name) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(name);
-  if (!sheet) {
-    sheet = ss.insertSheet(name);
-  }
+  if (!sheet) sheet = ss.insertSheet(name);
   return sheet;
 }
 
 // ── ИНИЦИАЛИЗАЦИЯ СТРУКТУРЫ ТАБЛИЦЫ ────────────────────────
 function initSheets() {
-  // Лист игроков: playerId | nickname | slot | shipBoard | lastSeen
+  // Лист комнат: roomId | player1Id | player1Nick | player2Id | player2Nick | phase | lastActivity | shotsP1 | shotsP2 | winner | turn
+  var rs = getSheet(SHEET_NAME_ROOMS);
+  if (rs.getLastRow() === 0) {
+    rs.appendRow(["roomId","player1Id","player1Nick","player2Id","player2Nick","phase","lastActivity","shotsP1","shotsP2","winner","turn"]);
+  }
+
+  // Лист игроков: playerId | nickname | roomId | slot | shipBoard | lastSeen
   var ps = getSheet(SHEET_NAME_PLAYERS);
   if (ps.getLastRow() === 0) {
-    ps.appendRow(["playerId", "nickname", "slot", "shipBoard", "lastSeen"]);
+    ps.appendRow(["playerId","nickname","roomId","slot","shipBoard","lastSeen"]);
   }
 
-  // Лист состояния: ключ | значение
-  var ss = getSheet(SHEET_NAME_STATE);
-  if (ss.getLastRow() === 0) {
-    ss.appendRow(["ключ", "значение"]);
-    ss.appendRow(["phase",    "waiting"]);  // waiting | playing | finished
-    ss.appendRow(["turn",     ""]);         // playerId чья очередь
-    ss.appendRow(["winner",   ""]);         // playerId победителя
-    ss.appendRow(["shotsP1",  "[]"]);       // выстрелы игрока 1 по полю игрока 2
-    ss.appendRow(["shotsP2",  "[]"]);       // выстрелы игрока 2 по полю игрока 1
-    ss.appendRow(["pendingTakeover", ""]);   // playerId который хочет занять место
-    ss.appendRow(["takeoverSlot",   ""]);   // слот который хотят занять
-    ss.appendRow(["takeoverExpiresAt", ""]);// Unix timestamp когда истекает
-  }
-
-  // Лист журнала: время | playerId | nickname | x | y | результат
+  // Лист журнала: время | roomId | playerId | nickname | x | y | результат
   var ls = getSheet(SHEET_NAME_LOG);
   if (ls.getLastRow() === 0) {
-    ls.appendRow(["время", "playerId", "nickname", "x", "y", "результат"]);
+    ls.appendRow(["время","roomId","playerId","nickname","x","y","результат"]);
   }
-}
-
-// ── РАБОТА СО СОСТОЯНИЕМ ────────────────────────────────────
-function readState() {
-  var sheet = getSheet(SHEET_NAME_STATE);
-  var data  = sheet.getDataRange().getValues();
-  var state = {};
-  for (var i = 1; i < data.length; i++) {
-    var key = data[i][0];
-    var val = data[i][1];
-    state[key] = val;
-  }
-  // Парсим JSON-поля
-  try { state.shotsP1 = JSON.parse(state.shotsP1 || "[]"); } catch(e) { state.shotsP1 = []; }
-  try { state.shotsP2 = JSON.parse(state.shotsP2 || "[]"); } catch(e) { state.shotsP2 = []; }
-  return state;
-}
-
-function writeStateKey(key, value) {
-  var sheet = getSheet(SHEET_NAME_STATE);
-  var data  = sheet.getDataRange().getValues();
-  for (var i = 1; i < data.length; i++) {
-    if (data[i][0] === key) {
-      sheet.getRange(i + 1, 2).setValue(
-        typeof value === "object" ? JSON.stringify(value) : value
-      );
-      return;
-    }
-  }
-  // Если ключа нет — добавляем
-  sheet.appendRow([key, typeof value === "object" ? JSON.stringify(value) : value]);
-}
-
-// ── РАБОТА С ИГРОКАМИ ───────────────────────────────────────
-function readPlayers() {
-  var sheet = getSheet(SHEET_NAME_PLAYERS);
-  var data  = sheet.getDataRange().getValues();
-  var players = [];
-  for (var i = 1; i < data.length; i++) {
-    if (!data[i][0]) continue;
-    var p = {
-      row:       i + 1,
-      playerId:  data[i][0],
-      nickname:  data[i][1],
-      slot:      data[i][2],
-      shipBoard: "",
-      lastSeen:  data[i][4]
-    };
-    try { p.shipBoard = data[i][3]; } catch(e) { p.shipBoard = ""; }
-    players.push(p);
-  }
-  return players;
-}
-
-function findPlayerById(playerId) {
-  var players = readPlayers();
-  for (var i = 0; i < players.length; i++) {
-    if (players[i].playerId === playerId) return players[i];
-  }
-  return null;
-}
-
-function updatePlayerRow(row, nickname, slot, shipBoard, lastSeen) {
-  var sheet = getSheet(SHEET_NAME_PLAYERS);
-  sheet.getRange(row, 2).setValue(nickname);
-  sheet.getRange(row, 3).setValue(slot);
-  sheet.getRange(row, 4).setValue(shipBoard);
-  sheet.getRange(row, 5).setValue(lastSeen);
-}
-
-function removePlayerRow(row) {
-  var sheet = getSheet(SHEET_NAME_PLAYERS);
-  sheet.deleteRow(row);
 }
 
 // ── ГЕНЕРАЦИЯ УНИКАЛЬНОГО ID ────────────────────────────────
 function generateId() {
-  return "p_" + Date.now() + "_" + Math.floor(Math.random() * 9999);
+  return "id_" + Date.now() + "_" + Math.floor(Math.random() * 9999);
+}
+
+function generateRoomId() {
+  var chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  var id = "";
+  for (var i = 0; i < 5; i++) id += chars[Math.floor(Math.random() * chars.length)];
+  return id;
 }
 
 // ── ГЕНЕРАЦИЯ РАССТАНОВКИ КОРАБЛЕЙ ──────────────────────────
-// Возвращает двумерный массив 10x10
-// 0 = вода, 1 = корабль
 function generateShips() {
   var grid = [];
-  for (var r = 0; r < 10; r++) {
-    grid.push([0,0,0,0,0,0,0,0,0,0]);
-  }
+  for (var r = 0; r < 10; r++) grid.push([0,0,0,0,0,0,0,0,0,0]);
 
-  // Стандартный набор: 1×4, 2×3, 3×2, 4×1
   var ships = [4, 3, 3, 2, 2, 2, 1, 1, 1, 1];
 
   for (var s = 0; s < ships.length; s++) {
@@ -193,24 +111,17 @@ function generateShips() {
       var row = Math.floor(Math.random() * 10);
       var col = Math.floor(Math.random() * 10);
 
-      if (horiz) {
-        if (col + size > 10) continue;
-      } else {
-        if (row + size > 10) continue;
-      }
+      if (horiz) { if (col + size > 10) continue; }
+      else       { if (row + size > 10) continue; }
 
-      // Проверка: можно ли поставить корабль (с учётом отступа)
       var canPlace = true;
       for (var d = 0; d < size && canPlace; d++) {
         var cr = horiz ? row     : row + d;
         var cc = horiz ? col + d : col;
         for (var dr = -1; dr <= 1; dr++) {
           for (var dc = -1; dc <= 1; dc++) {
-            var nr = cr + dr;
-            var nc = cc + dc;
-            if (nr >= 0 && nr < 10 && nc >= 0 && nc < 10) {
-              if (grid[nr][nc] === 1) { canPlace = false; }
-            }
+            var nr = cr + dr, nc = cc + dc;
+            if (nr >= 0 && nr < 10 && nc >= 0 && nc < 10 && grid[nr][nc] === 1) canPlace = false;
           }
         }
       }
@@ -224,194 +135,332 @@ function generateShips() {
         placed = true;
       }
     }
-    if (!placed) {
-      // Перегенерируем всё если не смогли разместить
-      return generateShips();
-    }
+    if (!placed) return generateShips();
   }
   return grid;
 }
 
-// ── ВХОД В ИГРУ ─────────────────────────────────────────────
-function joinGame(data) {
+// ── РАБОТА С КОМНАТАМИ ──────────────────────────────────────
+function readRooms() {
+  var sheet = getSheet(SHEET_NAME_ROOMS);
+  var data  = sheet.getDataRange().getValues();
+  var rooms = [];
+  for (var i = 1; i < data.length; i++) {
+    if (!data[i][0]) continue;
+    var room = {
+      row:          i + 1,
+      roomId:       data[i][0],
+      player1Id:    data[i][1],
+      player1Nick:  data[i][2],
+      player2Id:    data[i][3],
+      player2Nick:  data[i][4],
+      phase:        data[i][5],
+      lastActivity: data[i][6],
+      winner:       data[i][9] || ""
+    };
+    try { room.shotsP1 = JSON.parse(data[i][7] || "[]"); } catch(e) { room.shotsP1 = []; }
+    try { room.shotsP2 = JSON.parse(data[i][8] || "[]"); } catch(e) { room.shotsP2 = []; }
+    rooms.push(room);
+  }
+  return rooms;
+}
+
+function findRoom(roomId) {
+  var rooms = readRooms();
+  for (var i = 0; i < rooms.length; i++) {
+    if (rooms[i].roomId === roomId) return rooms[i];
+  }
+  return null;
+}
+
+function writeRoomField(row, colIndex, value) {
+  var sheet = getSheet(SHEET_NAME_ROOMS);
+  sheet.getRange(row, colIndex).setValue(
+    typeof value === "object" ? JSON.stringify(value) : value
+  );
+}
+
+function deleteRoomRow(row) {
+  var sheet = getSheet(SHEET_NAME_ROOMS);
+  sheet.deleteRow(row);
+}
+
+function updateRoomActivity(row) {
+  writeRoomField(row, 7, new Date().toISOString());
+}
+
+// ── УДАЛЕНИЕ УСТАРЕВШИХ КОМНАТ (LAZY CLEANUP) ───────────────
+function cleanupOldRooms() {
+  var sheet = getSheet(SHEET_NAME_ROOMS);
+  var data  = sheet.getDataRange().getValues();
+  var now   = Date.now();
+  // Удаляем снизу вверх чтобы не сбивать индексы строк
+  for (var i = data.length - 1; i >= 1; i--) {
+    if (!data[i][0]) continue;
+    var lastActivity = data[i][6];
+    if (!lastActivity) continue;
+    var lastMs = new Date(lastActivity).getTime();
+    if (now - lastMs > ROOM_TIMEOUT_MS) {
+      // Удаляем игроков этой комнаты
+      var roomId = data[i][0];
+      deletePlayersOfRoom(roomId);
+      sheet.deleteRow(i + 1);
+    }
+  }
+}
+
+// ── РАБОТА С ИГРОКАМИ ───────────────────────────────────────
+function readPlayers() {
+  var sheet = getSheet(SHEET_NAME_PLAYERS);
+  var data  = sheet.getDataRange().getValues();
+  var players = [];
+  for (var i = 1; i < data.length; i++) {
+    if (!data[i][0]) continue;
+    players.push({
+      row:       i + 1,
+      playerId:  data[i][0],
+      nickname:  data[i][1],
+      roomId:    data[i][2],
+      slot:      data[i][3],
+      shipBoard: data[i][4] || "",
+      lastSeen:  data[i][5]
+    });
+  }
+  return players;
+}
+
+function readPlayersOfRoom(roomId) {
+  var all = readPlayers();
+  return all.filter(function(p){ return p.roomId === roomId; });
+}
+
+function findPlayerById(playerId) {
+  var players = readPlayers();
+  for (var i = 0; i < players.length; i++) {
+    if (players[i].playerId === playerId) return players[i];
+  }
+  return null;
+}
+
+function deletePlayersOfRoom(roomId) {
+  var sheet = getSheet(SHEET_NAME_PLAYERS);
+  var data  = sheet.getDataRange().getValues();
+  for (var i = data.length - 1; i >= 1; i--) {
+    if (data[i][2] === roomId) sheet.deleteRow(i + 1);
+  }
+}
+
+function removePlayerRow(row) {
+  getSheet(SHEET_NAME_PLAYERS).deleteRow(row);
+}
+
+function updatePlayerLastSeen(row) {
+  getSheet(SHEET_NAME_PLAYERS).getRange(row, 6).setValue(new Date().toISOString());
+}
+
+// ── СПИСОК КОМНАТ (ЛОББИ) ────────────────────────────────────
+function getRooms() {
   initSheets();
+  cleanupOldRooms();
+  var rooms = readRooms();
+  var now   = Date.now();
+  var result = [];
+  for (var i = 0; i < rooms.length; i++) {
+    var r = rooms[i];
+    // Показываем только комнаты в ожидании второго игрока
+    if (r.phase !== "waiting") continue;
+    var lastMs = r.lastActivity ? new Date(r.lastActivity).getTime() : 0;
+    var idleSec = Math.floor((now - lastMs) / 1000);
+    result.push({
+      roomId:      r.roomId,
+      player1Nick: r.player1Nick,
+      idleSec:     idleSec,
+      lastActivity: r.lastActivity
+    });
+  }
+  return { ok: true, rooms: result };
+}
+
+// ── СОЗДАТЬ КОМНАТУ ──────────────────────────────────────────
+function createRoom(data) {
+  initSheets();
+  cleanupOldRooms();
+
   var nickname = (data.nickname || "").trim();
   if (!nickname) return { ok: false, error: "Введите никнейм" };
 
-  var players = readPlayers();
-  var state = readState();
-
-  // Если игрок уже в игре (переподключение)
-  for (var i = 0; i < players.length; i++) {
-    if (players[i].nickname === nickname) {
-      var now = new Date().toISOString();
-      updatePlayerRow(players[i].row, players[i].nickname, players[i].slot,
-                      players[i].shipBoard, now);
-      return {
-        ok: true,
-        playerId: players[i].playerId,
-        slot: players[i].slot,
-        reconnected: true,
-        phase: state.phase
-      };
-    }
-  }
-
-  // Определяем свободный слот (ищем слот без игрока)
-  var usedSlots = players.map(function(p) { return p.slot; });
-  var freeSlot = usedSlots.indexOf(1) === -1 ? 1 : usedSlots.indexOf(2) === -1 ? 2 : 0;
-
-  // Если уже 2 игрока - проверяем занятость слотов
-  if (players.length >= 2 && freeSlot === 0) {
-    // Проверяем если есть ожидающий захват
-    var pendingId = state.pendingTakeover || "";
-    var expireAt = parseInt(state.takeoverExpiresAt) || 0;
-    var nowSec = Math.floor(Date.now() / 1000);
-
-    // Если есть активное предложение и оно ещё не истекло
-    if (pendingId && expireAt > nowSec) {
-      return { 
-        ok: false, 
-        error: "Идёт попытка захвата. Подождите...", 
-        pendingTakeover: true 
-      };
-    }
-
-    // Все слоты заняты - предлагаем захватить место
-    // Если никто не хочет захватывать - ошибка
-    return { 
-      ok: false, 
-      error: "Игра заполнена. Используйте пароль для принудительного входа." 
-    };
-  }
-
-  // Если есть ожидающий захват и слот свободен - обрабатываем
-  var pendingId = state.pendingTakeover || "";
-  var expireAt = parseInt(state.takeoverExpiresAt) || 0;
-  var nowSec = Math.floor(Date.now() / 1000);
-  var targetSlot = parseInt(state.takeoverSlot) || 0;
-
-  // Если есть активное предложение - проверяем
-  if (pendingId && expireAt > nowSec && targetSlot > 0) {
-    // Предложение активно - новый игрок не может присоединиться
-    return { 
-      ok: false, 
-      error: "Идёт попытка занять место. Подождите " + (expireAt - nowSec) + "с...", 
-      pendingTakeover: true,
-      takeoverSlot: targetSlot,
-      takeoverExpiresAt: expireAt
-    };
-  }
-
-  // Используем свободный слот или слот из предложения
-  var slot = targetSlot > 0 && state.pendingTakeover ? targetSlot : freeSlot;
-
-  // Очищаем предложение захвата если было
-  if (state.pendingTakeover) {
-    writeStateKey("pendingTakeover", "");
-    writeStateKey("takeoverSlot", "");
-    writeStateKey("takeoverExpiresAt", "");
-  }
-
-  var playerId  = generateId();
-  var ships     = generateShips();
-  var shipStr   = JSON.stringify(ships);
-  var now       = new Date().toISOString();
-
-  var sheet = getSheet(SHEET_NAME_PLAYERS);
-  sheet.appendRow([playerId, nickname, slot, shipStr, now]);
-
-  // Обновляем состояние игры
-  var updatedPlayers = readPlayers();
-  if (updatedPlayers.length === 2) {
-    // Игра начинается — первый ход у слота 1
-    var p1 = updatedPlayers.filter(function(p){ return p.slot === 1; })[0];
-    writeStateKey("phase", "playing");
-    writeStateKey("turn",  p1.playerId);
-    writeStateKey("winner", "");
-    writeStateKey("shotsP1", []);
-    writeStateKey("shotsP2", []);
-  }
-
-  return { ok: true, playerId: playerId, slot: slot, phase: "waiting" };
-}
-
-// ── ПРИНУДИТЕЛЬНЫЙ ВХОД (ADMIN) ─────────────────────────────
-function forceJoin(data) {
-  initSheets();
-  var nickname = (data.nickname || "").trim();
-  var password = (data.password || "").trim();
-  var kickSlot = parseInt(data.kickSlot) || 0;  // 1 или 2
-
-  if (!nickname)                       return { ok: false, error: "Введите никнейм" };
-  if (password !== ADMIN_PASSWORD)     return { ok: false, error: "Неверный пароль" };
-  if (kickSlot !== 1 && kickSlot !== 2) return { ok: false, error: "Укажите слот для кика (1 или 2)" };
-
-  var players = readPlayers();
-  var target  = players.filter(function(p){ return p.slot === kickSlot; })[0];
-
-  if (!target) return { ok: false, error: "Слот " + kickSlot + " свободен" };
-
-  // Удаляем целевого игрока
-  removePlayerRow(target.row);
-
-  // Добавляем нового игрока на освободившийся слот
+  var roomId   = generateRoomId();
   var playerId = generateId();
   var ships    = generateShips();
-  var shipStr  = JSON.stringify(ships);
   var now      = new Date().toISOString();
 
-  var sheet = getSheet(SHEET_NAME_PLAYERS);
-  sheet.appendRow([playerId, nickname, kickSlot, shipStr, now]);
+  // Создаём комнату
+  var roomSheet = getSheet(SHEET_NAME_ROOMS);
+  roomSheet.appendRow([roomId, playerId, nickname, "", "", "waiting", now, "[]", "[]", ""]);
 
-  // Сбрасываем очередь если шла игра
-  var state = readState();
-  if (state.phase === "playing") {
-    var updatedPlayers = readPlayers();
-    var p1 = updatedPlayers.filter(function(p){ return p.slot === 1; })[0];
-    if (p1) {
-      writeStateKey("turn", p1.playerId);
+  // Добавляем игрока
+  var playerSheet = getSheet(SHEET_NAME_PLAYERS);
+  playerSheet.appendRow([playerId, nickname, roomId, 1, JSON.stringify(ships), now]);
+
+  return { ok: true, playerId: playerId, roomId: roomId, slot: 1 };
+}
+
+// ── ВОЙТИ В КОМНАТУ ──────────────────────────────────────────
+function joinRoom(data) {
+  initSheets();
+  cleanupOldRooms();
+
+  var nickname = (data.nickname || "").trim();
+  var roomId   = (data.roomId   || "").trim();
+
+  if (!nickname) return { ok: false, error: "Введите никнейм" };
+  if (!roomId)   return { ok: false, error: "Укажите ID комнаты" };
+
+  var room = findRoom(roomId);
+  if (!room) return { ok: false, error: "Комната не найдена или устарела" };
+  if (room.phase !== "waiting") return { ok: false, error: "Комната уже занята или игра началась" };
+  if (room.player2Id) return { ok: false, error: "Комната уже заполнена" };
+
+  // Переподключение (тот же никнейм — игрок 1 переподключается)
+  if (room.player1Nick === nickname) {
+    var existingPlayer = findPlayerById(room.player1Id);
+    if (existingPlayer) {
+      updatePlayerLastSeen(existingPlayer.row);
+      return { ok: true, playerId: existingPlayer.playerId, roomId: roomId, slot: 1, reconnected: true, phase: room.phase };
     }
-    writeStateKey("shotsP1", []);
-    writeStateKey("shotsP2", []);
-    writeStateKey("phase", "playing");
-    writeStateKey("winner", "");
   }
 
-  return {
-    ok: true,
-    playerId: playerId,
-    slot: kickSlot,
-    kicked: target.nickname
+  var playerId = generateId();
+  var ships    = generateShips();
+  var now      = new Date().toISOString();
+
+  // Добавляем второго игрока
+  var playerSheet = getSheet(SHEET_NAME_PLAYERS);
+  playerSheet.appendRow([playerId, nickname, roomId, 2, JSON.stringify(ships), now]);
+
+  // Обновляем комнату: записываем player2, меняем фазу на playing
+  var roomSheet = getSheet(SHEET_NAME_ROOMS);
+  var roomData  = roomSheet.getDataRange().getValues();
+  for (var i = 1; i < roomData.length; i++) {
+    if (roomData[i][0] === roomId) {
+      var targetRow = i + 1;
+      roomSheet.getRange(targetRow, 4).setValue(playerId);
+      roomSheet.getRange(targetRow, 5).setValue(nickname);
+      roomSheet.getRange(targetRow, 6).setValue("playing");
+      roomSheet.getRange(targetRow, 7).setValue(now);
+      
+      // === ИСПРАВЛЕНИЕ ===
+      // Первый игрок (slot 1) всегда начинает
+      setTurn(targetRow, room.player1Id);
+      
+      break;
+    }
+  }
+
+  return { ok: true, playerId: playerId, roomId: roomId, slot: 2, phase: "playing" };
+}
+
+// ── ПОЛУЧЕНИЕ СОСТОЯНИЯ ИГРЫ ────────────────────────────────
+function getState(playerId, roomId) {
+  initSheets();
+  cleanupOldRooms();
+
+  if (!roomId) return { ok: false, error: "Не указан roomId" };
+
+  var room = findRoom(roomId);
+  if (!room) return { ok: false, error: "Комната не найдена" };
+
+  // Обновляем lastSeen игрока
+  if (playerId) {
+    var me = findPlayerById(playerId);
+    if (me) {
+      updatePlayerLastSeen(me.row);
+      // Обновляем активность комнаты
+      updateRoomActivity(room.row);
+    }
+  }
+
+  var players = readPlayersOfRoom(roomId);
+  var playersPublic = players.map(function(p) {
+    return { playerId: p.playerId, nickname: p.nickname, slot: p.slot };
+  });
+
+  // Определяем чей ход: всегда слот 1 начинает, ход передаётся через shotsP1/shotsP2
+  var turn = determineTurn(room);
+
+  var result = {
+    ok:      true,
+    roomId:  roomId,
+    phase:   room.phase,
+    turn:    turn,
+    winner:  room.winner,
+    players: playersPublic,
+    shotsP1: room.shotsP1,
+    shotsP2: room.shotsP2
   };
+
+  // Добавляем собственное поле кораблей
+  if (playerId) {
+    var myPlayer = players.filter(function(p){ return p.playerId === playerId; })[0];
+    if (myPlayer) {
+      try { result.myBoard = JSON.parse(myPlayer.shipBoard); } catch(e) { result.myBoard = null; }
+      result.mySlot = myPlayer.slot;
+    }
+  }
+
+  return result;
+}
+
+// ── ОПРЕДЕЛЕНИЕ ЧЬЕГО ХОДА ──────────────────────────────────
+// Слот 1 ходит первым. При промахе ход переходит. При попадании — снова тот же.
+// Читаем из поля turn комнаты (хранится playerId)
+function determineTurn(room) {
+  // turn хранится в колонке 10 (индекс 9 в данных) — нам нужен отдельный механизм
+  // Используем отдельную колонку — читаем прямо из таблицы
+  var sheet = getSheet(SHEET_NAME_ROOMS);
+  var data  = sheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][0] === room.roomId) {
+      return data[i][10] || ""; // колонка 11 — turn (playerId)
+    }
+  }
+  return "";
+}
+
+function setTurn(roomRow, playerId) {
+  var sheet = getSheet(SHEET_NAME_ROOMS);
+  // Убеждаемся что колонка 11 существует
+  sheet.getRange(roomRow, 11).setValue(playerId);
 }
 
 // ── ХОД ИГРОКА ──────────────────────────────────────────────
 function makeMove(data) {
   var playerId = data.playerId;
-  var x        = parseInt(data.x);  // 0–9
-  var y        = parseInt(data.y);  // 0–9
+  var roomId   = data.roomId;
+  var x        = parseInt(data.x);
+  var y        = parseInt(data.y);
 
-  if (!playerId)                return { ok: false, error: "Нет playerId" };
-  if (isNaN(x) || isNaN(y))     return { ok: false, error: "Неверные координаты" };
+  if (!playerId)              return { ok: false, error: "Нет playerId" };
+  if (!roomId)                return { ok: false, error: "Нет roomId" };
+  if (isNaN(x) || isNaN(y))  return { ok: false, error: "Неверные координаты" };
   if (x < 0 || x > 9 || y < 0 || y > 9) return { ok: false, error: "Координаты вне поля" };
 
-  var state   = readState();
-  var players = readPlayers();
+  var room = findRoom(roomId);
+  if (!room) return { ok: false, error: "Комната не найдена" };
+  if (room.phase !== "playing") return { ok: false, error: "Игра не идёт" };
 
-  if (state.phase !== "playing") return { ok: false, error: "Игра не идёт" };
-  if (state.turn  !== playerId)  return { ok: false, error: "Сейчас не ваш ход" };
+  var turn = determineTurn(room);
+  if (turn !== playerId) return { ok: false, error: "Сейчас не ваш ход" };
 
-  var shooter = findPlayerById(playerId);
+  var players = readPlayersOfRoom(roomId);
+  var shooter  = players.filter(function(p){ return p.playerId === playerId; })[0];
   if (!shooter) return { ok: false, error: "Игрок не найден" };
 
-  // Находим противника
   var opponent = players.filter(function(p){ return p.playerId !== playerId; })[0];
   if (!opponent) return { ok: false, error: "Противник не найден" };
 
-  // Определяем массив выстрелов текущего игрока
   var shotsKey = shooter.slot === 1 ? "shotsP1" : "shotsP2";
-  var shots    = state[shotsKey];
+  var shots    = room[shotsKey];
 
   // Проверяем: уже стреляли в эту клетку?
   for (var i = 0; i < shots.length; i++) {
@@ -422,80 +471,108 @@ function makeMove(data) {
 
   // Читаем корабли противника
   var opponentBoard;
-  try {
-    opponentBoard = JSON.parse(opponent.shipBoard);
-  } catch(e) {
-    return { ok: false, error: "Ошибка данных противника" };
-  }
+  try { opponentBoard = JSON.parse(opponent.shipBoard); }
+  catch(e) { return { ok: false, error: "Ошибка данных противника" }; }
 
-  // Определяем результат выстрела
   var cellValue = opponentBoard[y][x];
   var hit = cellValue === 1;
   var result = hit ? "hit" : "miss";
 
-  // Проверяем: уничтожен ли корабль полностью?
+  // Информация о потопленном корабле
+  var sunkCells = [];
+  var sunkPerimeter = [];
   var sunk = false;
+
   if (hit) {
-    // Помечаем клетку как подбитую (2)
     opponentBoard[y][x] = 2;
-    // Обновляем поле противника в таблице
+    // Обновляем поле противника
     var opSheet = getSheet(SHEET_NAME_PLAYERS);
     var opData  = opSheet.getDataRange().getValues();
     for (var r = 1; r < opData.length; r++) {
       if (opData[r][0] === opponent.playerId) {
-        opSheet.getRange(r + 1, 4).setValue(JSON.stringify(opponentBoard));
+        opSheet.getRange(r + 1, 5).setValue(JSON.stringify(opponentBoard));
         break;
       }
     }
-    sunk = isShipSunk(opponentBoard, x, y);
-    if (sunk) result = "sunk";
+
+    var sunkResult = checkShipSunk(opponentBoard, x, y);
+    sunk = sunkResult.sunk;
+    if (sunk) {
+      result = "sunk";
+      sunkCells     = sunkResult.cells;
+      sunkPerimeter = sunkResult.perimeter;
+    }
   }
 
   // Добавляем выстрел в массив
-  shots.push({ x: x, y: y, result: result });
-  writeStateKey(shotsKey, shots);
+  var shotObj = { x: x, y: y, result: result };
+  if (sunk) {
+    shotObj.sunkCells     = sunkCells;
+    shotObj.sunkPerimeter = sunkPerimeter;
+  }
+  shots.push(shotObj);
+
+  // Обновляем выстрелы в таблице комнат
+  var roomSheet = getSheet(SHEET_NAME_ROOMS);
+  var roomData  = roomSheet.getDataRange().getValues();
+  for (var ri = 1; ri < roomData.length; ri++) {
+    if (roomData[ri][0] === roomId) {
+      var shotsColIdx = shooter.slot === 1 ? 8 : 9; // колонки 8 и 9 (1-based)
+      roomSheet.getRange(ri + 1, shotsColIdx).setValue(JSON.stringify(shots));
+      roomSheet.getRange(ri + 1, 7).setValue(new Date().toISOString()); // lastActivity
+      break;
+    }
+  }
 
   // Записываем в журнал
   var logSheet = getSheet(SHEET_NAME_LOG);
-  logSheet.appendRow([new Date().toISOString(), playerId, shooter.nickname, x, y, result]);
+  logSheet.appendRow([new Date().toISOString(), roomId, playerId, shooter.nickname, x, y, result]);
 
   // Проверяем победу
   var won = isGameOver(opponentBoard);
   if (won) {
-    writeStateKey("phase",  "finished");
-    writeStateKey("winner", playerId);
-    return { ok: true, result: result, sunk: sunk, gameOver: true, winner: playerId };
+    var roomSheetW = getSheet(SHEET_NAME_ROOMS);
+    var roomDataW  = roomSheetW.getDataRange().getValues();
+    for (var wi = 1; wi < roomDataW.length; wi++) {
+      if (roomDataW[wi][0] === roomId) {
+        roomSheetW.getRange(wi + 1, 6).setValue("finished");
+        roomSheetW.getRange(wi + 1, 10).setValue(playerId);
+        break;
+      }
+    }
+    return { ok: true, result: result, sunk: sunk, sunkCells: sunkCells, sunkPerimeter: sunkPerimeter, gameOver: true, winner: playerId };
   }
 
-  // Управление очерёдью:
-  // Если попадание — стреляет снова (BLOCK_NEXT логика)
-  // Если промах — передаём ход противнику (ALLOW_NEXT логика)
-  if (!hit) {
-    writeStateKey("turn", opponent.playerId);
+  // Управление очерёдью
+  var roomRow = null;
+  var roomDataT = getSheet(SHEET_NAME_ROOMS).getDataRange().getValues();
+  for (var ti = 1; ti < roomDataT.length; ti++) {
+    if (roomDataT[ti][0] === roomId) { roomRow = ti + 1; break; }
   }
-  // При попадании turn остаётся у текущего игрока
+  if (roomRow) {
+    var nextTurn = hit ? playerId : opponent.playerId;
+    setTurn(roomRow, nextTurn);
+  }
 
   return {
     ok: true,
     result: result,
     sunk: sunk,
+    sunkCells: sunkCells,
+    sunkPerimeter: sunkPerimeter,
     gameOver: false,
     nextTurn: hit ? playerId : opponent.playerId
   };
 }
 
-// ── ПРОВЕРКА: УНИЧТОЖЕН ЛИ КОРАБЛЬ ─────────────────────────
-function isShipSunk(board, hitX, hitY) {
-  // Находим все клетки корабля через flood-fill по горизонтали/вертикали
-  // Клетка считается частью корабля если она 1 или 2
-
-  // Сначала определяем принадлежность клетки к кораблю
-  // Ищем связные клетки (1 или 2) через 4-связность
+// ── ПРОВЕРКА: УНИЧТОЖЕН ЛИ КОРАБЛЬ — возвращает клетки и периметр ──
+function checkShipSunk(board, hitX, hitY) {
+  // Flood-fill для нахождения всех клеток корабля
   var visited = [];
   for (var r = 0; r < 10; r++) visited.push([false,false,false,false,false,false,false,false,false,false]);
 
-  var queue   = [{x: hitX, y: hitY}];
-  var cells   = [];
+  var queue = [{x: hitX, y: hitY}];
+  var cells = [];
   visited[hitY][hitX] = true;
 
   while (queue.length > 0) {
@@ -505,8 +582,7 @@ function isShipSunk(board, hitX, hitY) {
     for (var d = 0; d < dirs.length; d++) {
       var nx = cur.x + dirs[d].dx;
       var ny = cur.y + dirs[d].dy;
-      if (nx >= 0 && nx < 10 && ny >= 0 && ny < 10 &&
-          !visited[ny][nx] &&
+      if (nx >= 0 && nx < 10 && ny >= 0 && ny < 10 && !visited[ny][nx] &&
           (board[ny][nx] === 1 || board[ny][nx] === 2)) {
         visited[ny][nx] = true;
         queue.push({x: nx, y: ny});
@@ -514,299 +590,113 @@ function isShipSunk(board, hitX, hitY) {
     }
   }
 
-  // Если все клетки корабля = 2 (подбиты) — потоплен
+  // Проверяем: все клетки корабля подбиты?
   for (var i = 0; i < cells.length; i++) {
-    if (board[cells[i].y][cells[i].x] === 1) return false; // есть целые клетки
+    if (board[cells[i].y][cells[i].x] === 1) return { sunk: false, cells: [], perimeter: [] };
   }
-  return true;
+
+  // Корабль потоплен — вычисляем периметр
+  var cellSet = {};
+  cells.forEach(function(c){ cellSet[c.y + "_" + c.x] = true; });
+
+  var perimeter = [];
+  var perimSet  = {};
+  cells.forEach(function(c) {
+    for (var dy = -1; dy <= 1; dy++) {
+      for (var dx = -1; dx <= 1; dx++) {
+        if (dy === 0 && dx === 0) continue;
+        var nx = c.x + dx, ny = c.y + dy;
+        if (nx < 0 || nx > 9 || ny < 0 || ny > 9) continue;
+        var key = ny + "_" + nx;
+        if (!cellSet[key] && !perimSet[key]) {
+          perimSet[key] = true;
+          perimeter.push({x: nx, y: ny});
+        }
+      }
+    }
+  });
+
+  return { sunk: true, cells: cells, perimeter: perimeter };
 }
 
 // ── ПРОВЕРКА: ИГРА ЗАВЕРШЕНА? ────────────────────────────────
 function isGameOver(board) {
-  for (var r = 0; r < 10; r++) {
-    for (var c = 0; c < 10; c++) {
-      if (board[r][c] === 1) return false; // есть целые клетки кораблей
-    }
-  }
+  for (var r = 0; r < 10; r++)
+    for (var c = 0; c < 10; c++)
+      if (board[r][c] === 1) return false;
   return true;
-}
-
-// ── ЗАПРОС НА ЗАХВАТ МЕСТА ────────────────────────────────
-function requestTakeover(data) {
-  initSheets();
-  var nickname = (data.nickname || "").trim();
-  var targetSlot = parseInt(data.slot) || 0;
-
-  if (!nickname) return { ok: false, error: "Введите никнейм" };
-  if (targetSlot !== 1 && targetSlot !== 2) return { ok: false, error: "Укажите слот 1 или 2" };
-
-  var players = readPlayers();
-  var state = readState();
-
-  // Проверяем занят ли слот
-  var currentPlayer = players.filter(function(p){ return p.slot === targetSlot; })[0];
-  if (!currentPlayer) {
-    // Слот свободен - просто занимаем
-    var playerId = generateId();
-    var ships = generateShips();
-    var shipStr = JSON.stringify(ships);
-    var now = new Date().toISOString();
-
-    var sheet = getSheet(SHEET_NAME_PLAYERS);
-    sheet.appendRow([playerId, nickname, targetSlot, shipStr, now]);
-
-    var updatedPlayers = readPlayers();
-    if (updatedPlayers.length === 2) {
-      var p1 = updatedPlayers.filter(function(p){ return p.slot === 1; })[0];
-      writeStateKey("phase", "playing");
-      writeStateKey("turn",  p1.playerId);
-      writeStateKey("winner", "");
-      writeStateKey("shotsP1", []);
-      writeStateKey("shotsP2", []);
-    }
-
-    return { ok: true, playerId: playerId, slot: targetSlot };
-  }
-
-  // Слот занят - проверяем истекло ли предыдущее предложение
-  var pendingId = state.pendingTakeover || "";
-  var expireAt = parseInt(state.takeoverExpiresAt) || 0;
-  var nowSec = Math.floor(Date.now() / 1000);
-
-  // Если предложение ещё активно - отклоняем
-  if (pendingId && expireAt > nowSec) {
-    return { 
-      ok: false, 
-      error: "Другой игрок уже пробует занять это место", 
-      pendingTakeover: true,
-      takeoverSlot: targetSlot,
-      takeoverExpiresAt: expireAt,
-      currentPlayer: currentPlayer.nickname
-    };
-  }
-
-  // Создаём новое предложение о захвате
-  var takeoverId = generateId();
-  var expiresAt = nowSec + 5; // 5 секунд
-
-  writeStateKey("pendingTakeover", takeoverId);
-  writeStateKey("takeoverSlot", targetSlot);
-  writeStateKey("takeoverExpiresAt", expiresAt.toString());
-
-  return {
-    ok: true,
-    takeoverRequested: true,
-    playerId: takeoverId,
-    slot: targetSlot,
-    expiresAt: expiresAt,
-    currentPlayer: currentPlayer.nickname,
-    message: "Ожидание ответа от текущего игрока..."
-  };
-}
-
-// ── ПРИНЯТЬ ЗАХВАТ ───────────────────────────────────────────
-function acceptTakeover(data) {
-  var playerId = data.playerId;
-  if (!playerId) return { ok: false, error: "Нет playerId" };
-
-  var players = readPlayers();
-  var state = readState();
-  var nowSec = Math.floor(Date.now() / 1000);
-
-  // Проверяем актуальность предложения
-  var pendingId = state.pendingTakeover || "";
-  var expireAt = parseInt(state.takeoverExpiresAt) || 0;
-
-  if (pendingId !== playerId || expireAt <= nowSec) {
-    // Предложение истекло или неверное
-    clearPendingTakeover();
-    return { ok: false, error: "Время вышло или запрос недействителен" };
-  }
-
-  // Получаем данные предложения
-  var targetSlot = parseInt(state.takeoverSlot) || 0;
-
-  // Находим текущего игрока на этом слоте
-  var currentPlayer = players.filter(function(p){ return p.slot === targetSlot; })[0];
-  if (!currentPlayer) {
-    clearPendingTakeover();
-    return { ok: false, error: "Слот уже свободен" };
-  }
-
-  // Удаляем текущего игрока
-  removePlayerRow(currentPlayer.row);
-
-  // Очищаем предложение
-  clearPendingTakeover();
-
-  // Добавляем нового игрока
-  var newId = generateId();
-  var ships = generateShips();
-  var shipStr = JSON.stringify(ships);
-  var now = new Date().toISOString();
-
-  var sheet = getSheet(SHEET_NAME_PLAYERS);
-  sheet.appendRow([newId, data.nickname || "Новый игрок", targetSlot, shipStr, now]);
-
-  // Сбрасываем игру если она была в процессе
-  if (state.phase === "playing") {
-    var updatedPlayers = readPlayers();
-    var p1 = updatedPlayers.filter(function(p){ return p.slot === 1; })[0];
-    if (p1) {
-      writeStateKey("turn", p1.playerId);
-    }
-    writeStateKey("shotsP1", []);
-    writeStateKey("shotsP2", []);
-    writeStateKey("phase", "playing");
-    writeStateKey("winner", "");
-  }
-
-  return {
-    ok: true,
-    slot: targetSlot,
-    playerId: newId,
-    kicked: currentPlayer.nickname,
-    message: "Вы заняли место игрока " + currentPlayer.nickname
-  };
-}
-
-// ── ОТКЛОНИТЬ ЗАХВАТ ────────────────────────────────────────
-function denyTakeover(data) {
-  var playerId = data.playerId;
-  if (!playerId) return { ok: false, error: "Нет playerId" };
-
-  var state = readState();
-  var nowSec = Math.floor(Date.now() / 1000);
-
-  // Проверяем актуальность предложения
-  var pendingId = state.pendingTakeover || "";
-  var expireAt = parseInt(state.takeoverExpiresAt) || 0;
-
-  if (pendingId !== playerId || expireAt <= nowSec) {
-    clearPendingTakeover();
-    return { ok: false, error: "Время вышло или запрос недействителен" };
-  }
-
-  // Просто очищаем предложение
-  clearPendingTakeover();
-
-  return {
-    ok: true,
-    message: "Вы отклонили запрос на захват"
-  };
 }
 
 // ── ЯВНЫЙ ВЫХОД ИГРОКА ────────────────────────────────────
 function leaveGame(data) {
   var playerId = data.playerId;
+  var roomId   = data.roomId;
   if (!playerId) return { ok: false, error: "Нет playerId" };
 
-  var players = readPlayers();
-  var me = players.filter(function(p){ return p.playerId === playerId; })[0];
+  var me = findPlayerById(playerId);
+  if (me) removePlayerRow(me.row);
 
-  if (!me) return { ok: false, error: "Игрок не найден" };
-
-  // Удаляем игрока
-  removePlayerRow(me.row);
-
-  // Очищаем состояние если игра была
-  var state = readState();
-  if (state.phase === "playing") {
-    writeStateKey("phase", "waiting");
-    writeStateKey("turn", "");
-    writeStateKey("shotsP1", []);
-    writeStateKey("shotsP2", []);
+  if (roomId) {
+    var room = findRoom(roomId);
+    if (room && room.phase === "playing") {
+      // Переводим комнату обратно в waiting
+      var sheet = getSheet(SHEET_NAME_ROOMS);
+      var data2 = sheet.getDataRange().getValues();
+      for (var i = 1; i < data2.length; i++) {
+        if (data2[i][0] === roomId) {
+          sheet.getRange(i + 1, 6).setValue("waiting");
+          // Очищаем второго игрока если это он выходит
+          if (room.player2Id === playerId) {
+            sheet.getRange(i + 1, 4).setValue("");
+            sheet.getRange(i + 1, 5).setValue("");
+          }
+          sheet.getRange(i + 1, 8).setValue("[]");
+          sheet.getRange(i + 1, 9).setValue("[]");
+          sheet.getRange(i + 1, 10).setValue("");
+          sheet.getRange(i + 1, 11).setValue("");
+          sheet.getRange(i + 1, 7).setValue(new Date().toISOString());
+          break;
+        }
+      }
+    } else if (room && room.phase === "waiting") {
+      // Первый игрок вышел из ожидания — удаляем комнату
+      deletePlayersOfRoom(roomId);
+      var sheet2 = getSheet(SHEET_NAME_ROOMS);
+      var data3  = sheet2.getDataRange().getValues();
+      for (var j = data3.length - 1; j >= 1; j--) {
+        if (data3[j][0] === roomId) { sheet2.deleteRow(j + 1); break; }
+      }
+    }
   }
-
-  // Очищаем предложение захвата
-  clearPendingTakeover();
 
   return { ok: true, message: "Вы вышли из игры" };
 }
 
-// ── ОЧИСТИТЬ ПРЕДЛОЖЕНИЕ ЗАХВАТА ───────────────────────
-function clearPendingTakeover() {
-  writeStateKey("pendingTakeover", "");
-  writeStateKey("takeoverSlot", "");
-  writeStateKey("takeoverExpiresAt", "");
-}
-
-// ── ПОЛУЧЕНИЕ СОСТОЯНИЯ ИГРЫ ────────────────────────────────
-function getState(playerId) {
-  initSheets();
-  var state   = readState();
-  var players = readPlayers();
-  var nowSec = Math.floor(Date.now() / 1000);
-
-  // Проверяем и очищаем истекшие предложения
-  var expireAt = parseInt(state.takeoverExpiresAt) || 0;
-  if (state.pendingTakeover && expireAt > 0 && expireAt <= nowSec) {
-    writeStateKey("pendingTakeover", "");
-    writeStateKey("takeoverSlot", "");
-    writeStateKey("takeoverExpiresAt", "");
-    state.pendingTakeover = "";
-    state.takeoverSlot = "";
-    state.takeoverExpiresAt = "";
-  }
-
-  // Публичная информация об игроках
-  var playersPublic = players.map(function(p) {
-    return { playerId: p.playerId, nickname: p.nickname, slot: p.slot };
-  });
-
-  var result = {
-    ok:      true,
-    phase:   state.phase,
-    turn:    state.turn,
-    winner:  state.winner,
-    players: playersPublic,
-    shotsP1: state.shotsP1,
-    shotsP2: state.shotsP2
-  };
-
-  // Добавляем информацию о захвате если есть активное предложение
-  if (state.pendingTakeover && expireAt > nowSec) {
-    result.pendingTakeover = {
-      pendingTakeover: state.pendingTakeover,
-      slot: parseInt(state.takeoverSlot),
-      expiresAt: expireAt
-    };
-  }
-
-  // Добавляем собственное поле кораблей если playerId передан
-  if (playerId) {
-    var me = players.filter(function(p){ return p.playerId === playerId; })[0];
-    if (me) {
-      try {
-        result.myBoard = JSON.parse(me.shipBoard);
-      } catch(e) {
-        result.myBoard = null;
-      }
-      result.mySlot = me.slot;
-    }
-  }
-
-  return result;
-}
-
-// ── ПЕРЕЗАПУСК ИГРЫ ─────────────────────────────────────────
+// ── ПЕРЕЗАПУСК ИГРЫ (ADMIN) ──────────────────────────────────
 function restartGame(data) {
   var password = (data.password || "").trim();
+  var roomId   = data.roomId;
   if (password !== ADMIN_PASSWORD) return { ok: false, error: "Неверный пароль" };
 
-  // Очищаем игроков
-  var ps = getSheet(SHEET_NAME_PLAYERS);
-  var lastRow = ps.getLastRow();
-  if (lastRow > 1) {
-    ps.deleteRows(2, lastRow - 1);
+  if (roomId) {
+    // Перезапустить конкретную комнату: удалить её и всех игроков
+    deletePlayersOfRoom(roomId);
+    var sheet = getSheet(SHEET_NAME_ROOMS);
+    var data2 = sheet.getDataRange().getValues();
+    for (var i = data2.length - 1; i >= 1; i--) {
+      if (data2[i][0] === roomId) { sheet.deleteRow(i + 1); break; }
+    }
+    return { ok: true, message: "Комната удалена" };
   }
 
-  // Сбрасываем состояние
-  writeStateKey("phase",   "waiting");
-  writeStateKey("turn",    "");
-  writeStateKey("winner",  "");
-  writeStateKey("shotsP1", []);
-  writeStateKey("shotsP2", []);
+  // Без roomId — очистить всё
+  var rs = getSheet(SHEET_NAME_ROOMS);
+  var rLast = rs.getLastRow();
+  if (rLast > 1) rs.deleteRows(2, rLast - 1);
 
-  return { ok: true, message: "Игра перезапущена" };
+  var ps = getSheet(SHEET_NAME_PLAYERS);
+  var pLast = ps.getLastRow();
+  if (pLast > 1) ps.deleteRows(2, pLast - 1);
+
+  return { ok: true, message: "Все комнаты удалены" };
 }
