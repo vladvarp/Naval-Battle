@@ -1093,6 +1093,9 @@ var audioState = {
   enabled: (localStorage.getItem("mb_sound_enabled") !== "0"),
   volume: 0.75,
   unlocked: false,
+  cache: {},
+  currentAudio: null,
+  lastPlayerShotAt: 0,
 };
 
 function setSoundEnabled(enabled) {
@@ -1113,6 +1116,8 @@ function toggleSound() {
 
 function unlockAudioOnce() {
   audioState.unlocked = true;
+  // Лёгкая предзагрузка самых частых/существующих звуков (уменьшает задержки на некоторых браузерах)
+  preloadAudioForEventIds(["shoot","gameStart","gameWin","gameLose"]);
 }
 
 document.addEventListener("pointerdown", unlockAudioOnce, { once: true, passive: true });
@@ -1121,6 +1126,25 @@ document.addEventListener("keydown", unlockAudioOnce, { once: true });
 function getAudioEventConfig(id) {
   for (var i = 0; i < AUDIO_EVENTS.length; i++) if (AUDIO_EVENTS[i].id === id) return AUDIO_EVENTS[i];
   return null;
+}
+
+function preloadAudioForEventIds(ids) {
+  if (!ids || !ids.length) return;
+  ids.forEach(function(id) {
+    var cfg = getAudioEventConfig(id);
+    if (!cfg || !cfg.folder || !cfg.files) return;
+    for (var i = 0; i < cfg.files.length; i++) {
+      var file = cfg.files[i];
+      var src = cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "") + "/" + String(file);
+      if (audioState.cache[src]) continue;
+      try {
+        var a = new Audio(src);
+        a.preload = "auto";
+        a.load();
+        audioState.cache[src] = a;
+      } catch (e) {}
+    }
+  });
 }
 
 function playEventSound(id) {
@@ -1134,8 +1158,20 @@ function playEventSound(id) {
   var src = cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "") + "/" + String(file);
 
   try {
-    var a = new Audio(src);
+    var a = audioState.cache[src];
+    if (!a) {
+      a = new Audio(src);
+      a.preload = "auto";
+      a.load();
+      audioState.cache[src] = a;
+    }
+    // Один канал: не даём звукам наслаиваться друг на друга
+    if (audioState.currentAudio && audioState.currentAudio !== a) {
+      try { audioState.currentAudio.pause(); audioState.currentAudio.currentTime = 0; } catch (e) {}
+    }
+    audioState.currentAudio = a;
     a.volume = audioState.volume;
+    try { a.currentTime = 0; } catch (e) {}
     a.play().catch(function(){});
   } catch (e) {}
 }
@@ -1539,6 +1575,7 @@ async function shoot(x, y) {
   if (!gs || gs.phase !== "playing") return;
   if (gs.turn !== state.playerId) return;
 
+  audioState.lastPlayerShotAt = Date.now();
   playEventSound("shoot");
 
   var myShots = state.mySlot === 1 ? gs.shotsP1 : gs.shotsP2;
@@ -1991,9 +2028,14 @@ function updateLog(gs, prevState) {
   if (enemyShots && enemyShots.length > (prevEnemy ? prevEnemy.length : 0)) {
     for (var j = (prevEnemy ? prevEnemy.length : 0); j < enemyShots.length; j++) {
       var es = enemyShots[j];
-      if (es.result === "sunk") playEventSound("sunkMe");
-      else if (es.result === "hit") playEventSound("hitMe");
-      else if (es.result === "miss") playEventSound("enemyMiss");
+      // Иногда вражеские выстрелы "догоняют" polling-ом и могут наложиться на звук нашего выстрела.
+      // Подавляем вражеские SFX, если прямо сейчас мы в процессе выстрела или выстрелили совсем недавно.
+      var suppressEnemySfx = state.inputLocked || (Date.now() - (audioState.lastPlayerShotAt || 0) < 1200);
+      if (!suppressEnemySfx) {
+        if (es.result === "sunk") playEventSound("sunkMe");
+        else if (es.result === "hit") playEventSound("hitMe");
+        else if (es.result === "miss") playEventSound("enemyMiss");
+      }
       var eText = es.result === "hit" ? "Попадание!" : es.result === "sunk" ? "Потоплил!" : "Промах";
       addLog(enemyName + " → " + COL_LABELS[es.x] + ROW_LABELS[es.y] + ": " + eText, es.result);
     }
