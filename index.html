@@ -748,6 +748,41 @@
   }
   .winner-card p { color: rgba(168,228,255,0.6); font-size: 13px; letter-spacing: 2px; margin-bottom: 24px; }
 
+  /* ── ОВЕРЛЕЙ ЗАГРУЗКИ АУДИО ──────────────────────────── */
+  .audio-loading-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(2,13,24,0.88); z-index: 1200;
+    align-items: center; justify-content: center;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  .audio-loading-overlay.show { display: flex; }
+  .audio-loading-card {
+    background: rgba(4,31,53,0.97);
+    border: 2px solid rgba(26,159,212,0.55);
+    border-radius: 16px;
+    padding: 28px 30px;
+    text-align: center;
+    max-width: 92vw;
+    box-shadow: 0 0 70px rgba(26,159,212,0.18);
+  }
+  .audio-loading-title {
+    font-family: 'Russo One', sans-serif;
+    font-size: 14px;
+    letter-spacing: 3px;
+    color: var(--foam);
+    margin-bottom: 10px;
+  }
+  .audio-loading-meta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: rgba(168,228,255,0.55);
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+
   /* ── НИЖНЯЯ ПАНЕЛЬ ──────────────────────────────────── */
   .actions-bar { display: flex; gap: 12px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
 
@@ -883,6 +918,17 @@
 </div>
 <!-- Объявление смены хода -->
 <div class="phase-announcement" id="phaseAnnouncement"></div>
+
+<!-- Оверлей загрузки аудио -->
+<div class="audio-loading-overlay" id="audioLoadingOverlay">
+  <div class="audio-loading-card">
+    <div class="audio-loading-title">ЗАГРУЗКА АУДИО</div>
+    <div class="audio-loading-meta">
+      <div class="spin-icon"></div>
+      <span id="audioLoadingText">Подготовка...</span>
+    </div>
+  </div>
+</div>
 
 <!-- ШАПКА -->
 <header>
@@ -1096,6 +1142,7 @@ var audioState = {
   cache: {},
   currentAudio: null,
   lastPlayerShotAt: 0,
+  preload: { started: false, done: false, total: 0, finished: 0, promise: null },
 };
 
 function setSoundEnabled(enabled) {
@@ -1145,6 +1192,113 @@ function preloadAudioForEventIds(ids) {
       } catch (e) {}
     }
   });
+}
+
+function setAudioLoadingOverlay(visible, text) {
+  var overlay = document.getElementById("audioLoadingOverlay");
+  var label = document.getElementById("audioLoadingText");
+  if (label && text) label.textContent = text;
+  if (!overlay) return;
+  overlay.classList.toggle("show", !!visible);
+}
+
+function buildAllAudioSrcList() {
+  var list = [];
+  for (var i = 0; i < AUDIO_EVENTS.length; i++) {
+    var cfg = AUDIO_EVENTS[i];
+    if (!cfg || !cfg.folder || !cfg.files) continue;
+    var folder = cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "");
+    for (var j = 0; j < cfg.files.length; j++) {
+      list.push(folder + "/" + String(cfg.files[j]));
+    }
+  }
+  // uniq
+  var seen = {};
+  var out = [];
+  for (var k = 0; k < list.length; k++) {
+    var s = list[k];
+    if (seen[s]) continue;
+    seen[s] = true;
+    out.push(s);
+  }
+  return out;
+}
+
+function preloadAllAudioToCache() {
+  if (audioState.preload.promise) return audioState.preload.promise;
+  audioState.preload.started = true;
+
+  var srcs = buildAllAudioSrcList();
+  audioState.preload.total = srcs.length;
+  audioState.preload.finished = 0;
+
+  if (!srcs.length) {
+    audioState.preload.done = true;
+    audioState.preload.promise = Promise.resolve();
+    return audioState.preload.promise;
+  }
+
+  function one(src) {
+    return new Promise(function(resolve) {
+      var a = audioState.cache[src];
+      if (!a) {
+        try {
+          a = new Audio(src);
+          a.preload = "auto";
+          audioState.cache[src] = a;
+        } catch (e) {
+          resolve();
+          return;
+        }
+      }
+
+      var done = false;
+      function finish() {
+        if (done) return;
+        done = true;
+        audioState.preload.finished++;
+        resolve();
+      }
+
+      // Важно: отсутствие файла не должно блокировать запуск игры бесконечно.
+      // Поэтому любой исход (loaded или error) считается "завершено".
+      try {
+        a.addEventListener("canplaythrough", finish, { once: true });
+        a.addEventListener("loadeddata", finish, { once: true });
+        a.addEventListener("error", finish, { once: true });
+        a.load();
+      } catch (e) {
+        finish();
+        return;
+      }
+
+      // Фолбэк на случай, если события не приходят (кросс-браузер)
+      setTimeout(finish, 8000);
+    });
+  }
+
+  audioState.preload.promise = Promise.all(srcs.map(one)).then(function() {
+    audioState.preload.done = true;
+  });
+  return audioState.preload.promise;
+}
+
+async function ensureAudioReadyBeforeGame() {
+  if (audioState.preload.done) return;
+
+  setAudioLoadingOverlay(true, "Загрузка 0/" + (audioState.preload.total || buildAllAudioSrcList().length));
+  var timer = setInterval(function() {
+    var total = audioState.preload.total || 0;
+    var fin = audioState.preload.finished || 0;
+    setAudioLoadingOverlay(true, "Загрузка " + fin + "/" + total);
+  }, 120);
+
+  try {
+    await preloadAllAudioToCache();
+  } finally {
+    clearInterval(timer);
+    setAudioLoadingOverlay(false);
+  }
 }
 
 function playEventSound(id) {
@@ -1433,7 +1587,7 @@ async function createRoom() {
     state.roomId   = res.roomId;
     saveSession();
     stopLobbyPolling();
-    enterGameScreen();
+    await enterGameScreen();
   } catch(e) { showCreateMsg("Ошибка подключения. Проверьте URL API.", "error"); }
 }
 
@@ -1453,7 +1607,7 @@ async function joinRoom(roomId) {
     state.roomId   = res.roomId;
     saveSession();
     stopLobbyPolling();
-    enterGameScreen();
+    await enterGameScreen();
   } catch(e) {
     document.getElementById("createMsg").innerHTML =
       '<div class="message message-error">Ошибка подключения</div>';
@@ -1461,7 +1615,8 @@ async function joinRoom(roomId) {
 }
 
 // ── ПЕРЕХОД В ИГРОВОЙ ЭКРАН ───────────────────────────────────
-function enterGameScreen() {
+async function enterGameScreen() {
+  await ensureAudioReadyBeforeGame();
   showScreen("gameScreen");
   document.getElementById("waitingRoomCode").textContent = state.roomId || "—";
   buildGridLabels();
@@ -2105,7 +2260,7 @@ async function restartGame() {
 }
 
 // ── ИНИЦИАЛИЗАЦИЯ ─────────────────────────────────────────────
-(function init() {
+(async function init() {
   window.addEventListener("resize", function() {
     var canvas = document.getElementById("projectileCanvas");
     canvas.width = window.innerWidth;
@@ -2115,13 +2270,16 @@ async function restartGame() {
   updateSoundButton();
   updateFullscreenButton();
 
+  // Стартуем загрузку аудио как можно раньше (до входа в игру)
+  preloadAllAudioToCache();
+
   // Подставляем сохранённый никнейм
   var savedNick = loadSavedNickname();
   if (savedNick) document.getElementById("inNickname").value = savedNick;
 
   // Пробуем восстановить сессию
   if (loadSession()) {
-    enterGameScreen();
+    await enterGameScreen();
     return;
   }
 
