@@ -1023,6 +1023,8 @@
 
     <!-- Кнопки действий -->
     <div class="actions-bar">
+      <button class="btn btn-ghost btn-sm" id="btnSound" onclick="toggleSound()">🔊 Звук: ВКЛ</button>
+      <button class="btn btn-ghost btn-sm" id="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
       <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
     </div>
 
@@ -1064,6 +1066,114 @@
 var API_URL = "https://script.google.com/macros/s/AKfycbwn8DhEjFzVM2H6flgE5YOAPp9VJNArbpn7j4jTF49Yty2nICY6L-IqrjcPbyzp-32DWQ/exec";
 var POLL_INTERVAL  = 300;  // мс — polling состояния игры
 var LOBBY_INTERVAL = 5000; // мс — обновление списка комнат
+
+// ── АУДИО ────────────────────────────────────────────────────
+function makeFiles10() {
+  var arr = [];
+  for (var i = 1; i <= 10; i++) arr.push(i + ".mp3");
+  return arr;
+}
+
+var AUDIO_EVENTS = [
+  { id: "gameStart", label: "🎮 Начало игры",             folder: "audio/gameStart", files: makeFiles10() },
+  { id: "gameWin",   label: "🏆 Победа (наша)",           folder: "audio/gameWin",   files: makeFiles10() },
+  { id: "gameLose",  label: "💀 Поражение",               folder: "audio/gameLose",  files: makeFiles10() },
+  { id: "shoot",     label: "💥 Выстрел (мы стреляем)",   folder: "audio/shoot",     files: makeFiles10() },
+  { id: "hitEnemy",  label: "🎯 Попадание по противнику", folder: "audio/hitEnemy",  files: makeFiles10() },
+  { id: "sunkEnemy", label: "⚓ Потопили корабль врага",   folder: "audio/sunkEnemy", files: makeFiles10() },
+  { id: "hitMe",     label: "🔥 Противник попал по нам",  folder: "audio/hitMe",     files: makeFiles10() },
+  { id: "sunkMe",    label: "💦 Наш корабль потоплен",    folder: "audio/sunkMe",    files: makeFiles10() },
+  { id: "miss",      label: "🌊 Промах (наш)",            folder: "audio/miss",      files: makeFiles10() },
+  { id: "enemyMiss", label: "🌊 Противник промахнулся",   folder: "audio/enemyMiss", files: makeFiles10() },
+  { id: "turnMine",  label: "⚡ Ваш ход",                 folder: "audio/turnMine",  files: makeFiles10() },
+  { id: "turnEnemy", label: "⏳ Ход противника",          folder: "audio/turnEnemy", files: makeFiles10() },
+];
+
+var audioState = {
+  enabled: (localStorage.getItem("mb_sound_enabled") !== "0"),
+  volume: 0.75,
+  unlocked: false,
+};
+
+function setSoundEnabled(enabled) {
+  audioState.enabled = !!enabled;
+  localStorage.setItem("mb_sound_enabled", audioState.enabled ? "1" : "0");
+  updateSoundButton();
+}
+
+function updateSoundButton() {
+  var btn = document.getElementById("btnSound");
+  if (!btn) return;
+  btn.textContent = (audioState.enabled ? "🔊" : "🔇") + " Звук: " + (audioState.enabled ? "ВКЛ" : "ВЫКЛ");
+}
+
+function toggleSound() {
+  setSoundEnabled(!audioState.enabled);
+}
+
+function unlockAudioOnce() {
+  audioState.unlocked = true;
+}
+
+document.addEventListener("pointerdown", unlockAudioOnce, { once: true, passive: true });
+document.addEventListener("keydown", unlockAudioOnce, { once: true });
+
+function getAudioEventConfig(id) {
+  for (var i = 0; i < AUDIO_EVENTS.length; i++) if (AUDIO_EVENTS[i].id === id) return AUDIO_EVENTS[i];
+  return null;
+}
+
+function playEventSound(id) {
+  if (!audioState.enabled) return;
+  if (!audioState.unlocked) return;
+
+  var cfg = getAudioEventConfig(id);
+  if (!cfg || !cfg.folder || !cfg.files || !cfg.files.length) return;
+
+  var file = cfg.files[Math.floor(Math.random() * cfg.files.length)];
+  var src = cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "") + "/" + String(file);
+
+  try {
+    var a = new Audio(src);
+    a.volume = audioState.volume;
+    a.play().catch(function(){});
+  } catch (e) {}
+}
+
+// ── ПОЛНЫЙ ЭКРАН ──────────────────────────────────────────────
+function isIphone() {
+  return /iPhone/i.test(navigator.userAgent || "");
+}
+
+function isFullscreenSupported() {
+  return !!(document.documentElement && document.documentElement.requestFullscreen);
+}
+
+function updateFullscreenButton() {
+  var btn = document.getElementById("btnFullscreen");
+  if (!btn) return;
+
+  if (isIphone() || !isFullscreenSupported()) {
+    btn.style.display = "none";
+    return;
+  }
+
+  btn.style.display = "";
+  btn.textContent = (document.fullscreenElement ? "🗗" : "⛶") + " Экран";
+}
+
+function toggleFullscreen() {
+  if (isIphone()) return;
+  if (!isFullscreenSupported()) return;
+
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(function(){});
+  } else {
+    document.documentElement.requestFullscreen().catch(function(){});
+  }
+}
+
+document.addEventListener("fullscreenchange", updateFullscreenButton);
 
 // ── СОСТОЯНИЕ ПРИЛОЖЕНИЯ ─────────────────────────────────────
 var state = {
@@ -1429,6 +1539,8 @@ async function shoot(x, y) {
   if (!gs || gs.phase !== "playing") return;
   if (gs.turn !== state.playerId) return;
 
+  playEventSound("shoot");
+
   var myShots = state.mySlot === 1 ? gs.shotsP1 : gs.shotsP2;
   for (var i = 0; i < myShots.length; i++) {
     if (myShots[i].x === x && myShots[i].y === y) return;
@@ -1604,6 +1716,10 @@ function applyLocalShot(x, y, result, res) {
     if (shots[i].x === x && shots[i].y === y) return;
   }
 
+  if (result === "sunk") playEventSound("sunkEnemy");
+  else if (result === "hit") playEventSound("hitEnemy");
+  else if (result === "miss") playEventSound("miss");
+
   var shotObj = { x: x, y: y, result: result };
   if (result === "sunk" && res) {
     shotObj.sunkCells     = res.sunkCells     || [];
@@ -1689,6 +1805,10 @@ function processGameState(gs) {
 
   updateStatusBar(gs);
 
+  if (prevState && prevState.phase === "waiting" && gs.phase === "playing") {
+    playEventSound("gameStart");
+  }
+
   if (gs.phase === "waiting") {
     document.getElementById("waitingBlock").style.display = "block";
     document.getElementById("boardsBlock").style.display  = "none";
@@ -1710,6 +1830,7 @@ function processGameState(gs) {
   var turnChanged = prevState && prevState.turn !== gs.turn && !state.inputLocked;
 
   if (turnChanged && !state.inputLocked) {
+    playEventSound(isMyTurn ? "turnMine" : "turnEnemy");
     if (isMyTurn) {
       (async function() {
         await showPhaseAnnouncement("⚡ ВАШ ХОД!", "my");
@@ -1870,6 +1991,9 @@ function updateLog(gs, prevState) {
   if (enemyShots && enemyShots.length > (prevEnemy ? prevEnemy.length : 0)) {
     for (var j = (prevEnemy ? prevEnemy.length : 0); j < enemyShots.length; j++) {
       var es = enemyShots[j];
+      if (es.result === "sunk") playEventSound("sunkMe");
+      else if (es.result === "hit") playEventSound("hitMe");
+      else if (es.result === "miss") playEventSound("enemyMiss");
       var eText = es.result === "hit" ? "Попадание!" : es.result === "sunk" ? "Потоплил!" : "Промах";
       addLog(enemyName + " → " + COL_LABELS[es.x] + ROW_LABELS[es.y] + ": " + eText, es.result);
     }
@@ -1898,6 +2022,7 @@ function showWinner(gs) {
   document.getElementById("winnerName").textContent = isMe ? "ВЫ ПОБЕДИЛИ!" : winnerName.toUpperCase();
   document.getElementById("winnerMsg").textContent  = isMe ? "Все корабли противника потоплены!" : "одержал победу в морском бою";
   overlay.classList.add("show");
+  playEventSound(isMe ? "gameWin" : "gameLose");
 }
 function closeWinner() { document.getElementById("winnerOverlay").classList.remove("show"); }
 
@@ -1944,6 +2069,9 @@ async function restartGame() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
   });
+
+  updateSoundButton();
+  updateFullscreenButton();
 
   // Подставляем сохранённый никнейм
   var savedNick = loadSavedNickname();
