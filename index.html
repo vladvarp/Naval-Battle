@@ -1242,7 +1242,10 @@
     <div class="crown">🏆</div>
     <h2 id="winnerName">ПОБЕДИТЕЛЬ</h2>
     <p id="winnerMsg">одержал победу в морском бою</p>
-    <button class="btn btn-primary" onclick="closeWinner()">Продолжить</button>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:4px;">
+      <button class="btn btn-ghost" style="flex:1;min-width:140px;" onclick="closeWinner()">🔍 Изучить поля</button>
+      <button class="btn btn-danger" style="flex:1;min-width:140px;" onclick="leaveGame()">🚪 Выход</button>
+    </div>
   </div>
 </div>
 
@@ -1383,33 +1386,62 @@ function pickRandom(arr) {
 }
 
 function buildPrioritizedAudioSrcList() {
-  // Сначала: по 1 случайному файлу из каждой категории (AUDIO_EVENTS),
-  // потом: всё остальное (без дублей)
-  var first = [];
-  var rest = [];
+  // Фаза 1: по 2 случайных файла из каждой категории
+  // Фаза 2: оставшиеся — round-robin по 5 файлов из каждой категории
   var seen = {};
+  var phase1 = [];
+  var categoryRests = []; // массив остатков для каждой категории
 
   for (var i = 0; i < AUDIO_EVENTS.length; i++) {
     var cfg = AUDIO_EVENTS[i];
-    if (!cfg || !cfg.folder || !cfg.files || !cfg.files.length) continue;
+    if (!cfg || !cfg.folder || !cfg.files || !cfg.files.length) { categoryRests.push([]); continue; }
     var folder = cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "");
-    var rf = pickRandom(cfg.files);
-    if (rf) {
-      var s0 = folder + "/" + String(rf);
-      if (!seen[s0]) { seen[s0] = true; first.push(s0); }
+
+    // Перемешиваем файлы категории случайно
+    var shuffled = cfg.files.slice();
+    for (var s = shuffled.length - 1; s > 0; s--) {
+      var rnd = Math.floor(Math.random() * (s + 1));
+      var tmp = shuffled[s]; shuffled[s] = shuffled[rnd]; shuffled[rnd] = tmp;
+    }
+
+    // Берём первые 2 в phase1
+    var restStart = 0;
+    for (var k = 0; k < Math.min(2, shuffled.length); k++) {
+      var src = folder + "/" + String(shuffled[k]);
+      if (!seen[src]) { seen[src] = true; phase1.push(src); }
+      restStart = k + 1;
+    }
+
+    // Остаток идёт в round-robin
+    var rest = [];
+    for (var r = restStart; r < shuffled.length; r++) {
+      var src2 = folder + "/" + String(shuffled[r]);
+      if (!seen[src2]) rest.push({ src: src2, folder: folder });
+    }
+    categoryRests.push(rest);
+  }
+
+  // Round-robin: берём по 5 из каждой категории по кругу
+  var phase2 = [];
+  var hasMore = true;
+  var positions = categoryRests.map(function() { return 0; });
+  while (hasMore) {
+    hasMore = false;
+    for (var ci = 0; ci < categoryRests.length; ci++) {
+      var cat = categoryRests[ci];
+      var pos = positions[ci];
+      var end = Math.min(pos + 5, cat.length);
+      for (var fi = pos; fi < end; fi++) {
+        var entry = cat[fi];
+        if (!seen[entry.src]) { seen[entry.src] = true; phase2.push(entry.src); }
+      }
+      positions[ci] = end;
+      if (end < cat.length) hasMore = true;
     }
   }
 
-  var all = buildAllAudioSrcList();
-  for (var j = 0; j < all.length; j++) {
-    var s = all[j];
-    if (seen[s]) continue;
-    seen[s] = true;
-    rest.push(s);
-  }
-
-  var out = first.concat(rest);
-  out._primeCount = first.length;
+  var out = phase1.concat(phase2);
+  out._primeCount = phase1.length;
   return out;
 }
 
@@ -1479,10 +1511,21 @@ async function updateCacheButtons() {
   var icon = "🟥";
   try {
     if (!isFileProtocol()) {
-      var st = await getAudioCacheStatus();
-      icon = st.cached <= 0 ? "🟥" : (st.cached >= st.total ? "🟩" : "🟨");
+      var st  = await getAudioCacheStatus();
+      if (st.cached >= st.total) {
+        icon = "🟩";
+      } else {
+        // Проверяем: в каждой категории есть хотя бы 2 файла
+        var cachedSet = await getAudioCacheUrlSet();
+        var allReady  = true;
+        for (var i = 0; i < AUDIO_EVENTS.length; i++) {
+          var count = getCachedCountForEvent(AUDIO_EVENTS[i], cachedSet);
+          if (count < 2) { allReady = false; break; }
+        }
+        icon = allReady ? "🟨" : "🟥";
+      }
     }
-  } catch (e) {}
+  } catch(e) {}
 
   btns.forEach(function(btn) {
     btn.textContent = icon + " Кэш";
@@ -1490,12 +1533,10 @@ async function updateCacheButtons() {
 }
 
 async function cacheAudioFilesToCacheStorage(opts) {
-  // opts:
-  // - overwrite: true → удалить кэш и скачать заново
-  // - onlyMissing: true → скачивать только отсутствующие (по умолчанию true)
-  var overwrite = !!(opts && opts.overwrite);
-  var onlyMissing = (opts && typeof opts.onlyMissing === "boolean") ? opts.onlyMissing : true;
-  var timeoutMs = (opts && opts.timeoutMs) || 20000;
+  var overwrite    = !!(opts && opts.overwrite);
+  var onlyMissing  = (opts && typeof opts.onlyMissing === "boolean") ? opts.onlyMissing : true;
+  var timeoutMs    = (opts && opts.timeoutMs) || 20000;
+  var concurrency  = 5;
 
   if (!isCacheStorageAvailable()) return;
   if (isFileProtocol()) return;
@@ -1505,49 +1546,58 @@ async function cacheAudioFilesToCacheStorage(opts) {
   }
 
   var existing = onlyMissing ? await getAudioCacheUrlSet() : new Set();
-  var cache = await caches.open(AUDIO_CACHE_NAME);
-
-  var srcs = buildPrioritizedAudioSrcList();
+  var cache    = await caches.open(AUDIO_CACHE_NAME);
+  var srcs     = buildPrioritizedAudioSrcList();
   var primeCount = srcs && typeof srcs._primeCount === "number" ? srcs._primeCount : 0;
 
-  audioState.preload.started = true;
-  audioState.preload.done = false;
-  audioState.preload.promise = null;
-  audioState.preload.total = srcs.length;
+  audioState.preload.started  = true;
+  audioState.preload.done     = false;
+  audioState.preload.promise  = null;
+  audioState.preload.total    = srcs.length;
   audioState.preload.finished = 0;
   audioState.preload.currentSrc = null;
-  audioState.preload.phase = "prime";
+  audioState.preload.phase    = "prime";
 
-  for (var i = 0; i < srcs.length; i++) {
-    var rel = srcs[i];
+  // Вспомогательная функция загрузки одного файла
+  async function fetchOne(rel, idx) {
     var abs = toAbsoluteUrl(rel);
     audioState.preload.currentSrc = rel;
-    audioState.preload.phase = (i < primeCount ? "prime" : "rest");
+    audioState.preload.phase = (idx < primeCount ? "prime" : "rest");
 
     if (onlyMissing && existing.has(abs)) {
-      audioState.preload.finished = i + 1;
-      continue;
+      audioState.preload.finished++;
+      return;
     }
-
     try {
       var ctrl = ("AbortController" in window) ? new AbortController() : null;
-      var t = setTimeout(function() { try { if (ctrl) ctrl.abort(); } catch (e) {} }, timeoutMs);
+      var t = setTimeout(function() { try { if (ctrl) ctrl.abort(); } catch(e) {} }, timeoutMs);
       var res = await fetch(abs, { signal: ctrl ? ctrl.signal : undefined, cache: overwrite ? "reload" : "default" });
       clearTimeout(t);
       if (res && res.ok) {
-        try { await cache.put(abs, res.clone()); } catch (e) {}
+        try { await cache.put(abs, res.clone()); } catch(e) {}
       }
-    } catch (e) {}
-
-    audioState.preload.finished = i + 1;
+    } catch(e) {}
+    audioState.preload.finished++;
   }
+
+  // Параллельная загрузка с ограничением concurrency
+  var idx = 0;
+  async function worker() {
+    while (idx < srcs.length) {
+      var i = idx++;
+      await fetchOne(srcs[i], i);
+    }
+  }
+  var workers = [];
+  for (var w = 0; w < concurrency; w++) workers.push(worker());
+  await Promise.all(workers);
 
   audioState.preload.currentSrc = null;
   audioState.preload.done = true;
   await updateCacheButtons();
 }
 
-// Fallback (file://): sequential in-memory preload via <audio>
+// Резервный вариант (file://): последовательная предварительная загрузка в оперативную память через <audio>
 function loadOneAudioSrcInMemory(src, timeoutMs) {
   return new Promise(function(resolve) {
     var a = audioState.cache[src];
@@ -1585,27 +1635,35 @@ function loadOneAudioSrcInMemory(src, timeoutMs) {
 
 function preloadAllAudioInMemory(opts) {
   if (audioState.preload.promise) return audioState.preload.promise;
-  var timeoutMs = (opts && opts.timeoutMs) || 8000;
+  var timeoutMs  = (opts && opts.timeoutMs) || 8000;
+  var concurrency = 5;
 
-  var srcs = buildPrioritizedAudioSrcList();
+  var srcs       = buildPrioritizedAudioSrcList();
   var primeCount = srcs && typeof srcs._primeCount === "number" ? srcs._primeCount : 0;
 
-  audioState.preload.started = true;
-  audioState.preload.done = false;
-  audioState.preload.promise = null;
-  audioState.preload.total = srcs.length;
+  audioState.preload.started  = true;
+  audioState.preload.done     = false;
+  audioState.preload.promise  = null;
+  audioState.preload.total    = srcs.length;
   audioState.preload.finished = 0;
   audioState.preload.currentSrc = null;
-  audioState.preload.phase = "prime";
+  audioState.preload.phase    = "prime";
 
   audioState.preload.promise = (async function() {
-    for (var i = 0; i < srcs.length; i++) {
-      var src = srcs[i];
-      audioState.preload.currentSrc = src;
-      audioState.preload.phase = (i < primeCount ? "prime" : "rest");
-      await loadOneAudioSrcInMemory(src, timeoutMs);
-      audioState.preload.finished = i + 1;
+    var idx = 0;
+    async function worker() {
+      while (idx < srcs.length) {
+        var i   = idx++;
+        var src = srcs[i];
+        audioState.preload.currentSrc = src;
+        audioState.preload.phase = (i < primeCount ? "prime" : "rest");
+        await loadOneAudioSrcInMemory(src, timeoutMs);
+        audioState.preload.finished++;
+      }
     }
+    var workers = [];
+    for (var w = 0; w < concurrency; w++) workers.push(worker());
+    await Promise.all(workers);
     audioState.preload.currentSrc = null;
     audioState.preload.done = true;
   })();
@@ -2058,6 +2116,7 @@ async function enterGameScreen() {
   document.getElementById("waitingRoomCode").textContent = state.roomId || "—";
   buildGridLabels();
   buildGrids();
+  restoreLog();
   startPolling();
 }
 
@@ -2643,6 +2702,38 @@ function addLog(text, type) {
   li.innerHTML = '<span class="ts">' + ts + '</span>' + text;
   list.insertBefore(li, list.firstChild);
   while (list.children.length > 50) list.removeChild(list.lastChild);
+  saveLog();
+}
+
+function saveLog() {
+  try {
+    var list = document.getElementById("logList");
+    var items = [];
+    list.querySelectorAll("li").forEach(function(li) {
+      items.push({ html: li.innerHTML, cls: li.className });
+    });
+    localStorage.setItem("mb_log_" + (state.roomId || ""), JSON.stringify(items));
+  } catch(e) {}
+}
+
+function restoreLog() {
+  try {
+    var raw = localStorage.getItem("mb_log_" + (state.roomId || ""));
+    if (!raw) return;
+    var items = JSON.parse(raw);
+    var list = document.getElementById("logList");
+    list.innerHTML = "";
+    items.forEach(function(item) {
+      var li = document.createElement("li");
+      li.className = item.cls;
+      li.innerHTML = item.html;
+      list.appendChild(li);
+    });
+  } catch(e) {}
+}
+
+function clearSavedLog() {
+  try { localStorage.removeItem("mb_log_" + (state.roomId || "")); } catch(e) {}
 }
 
 function pad(n) { return n < 10 ? "0" + n : String(n); }
@@ -2667,6 +2758,7 @@ function leaveGame() {
   }
   stopPolling();
   clearSession();
+  state.nickname    = loadSavedNickname();
   state.gameState   = null;
   state.winnerShown = false;
   state.currentView = "mine";
@@ -2674,6 +2766,7 @@ function leaveGame() {
   unlockInput();
   document.getElementById("winnerOverlay").classList.remove("show");
   document.getElementById("logList").innerHTML = "";
+  clearSavedLog();
   // Возвращаем в лобби (ник уже запомнен)
   document.getElementById("lobbyNickname").textContent = state.nickname || "";
   document.getElementById("createMsg").innerHTML = "";
