@@ -1597,7 +1597,7 @@ async function cacheAudioFilesToCacheStorage(opts) {
   await updateCacheButtons();
 }
 
-// Резервный вариант (file://): последовательная предварительная загрузка в оперативную память через <audio>
+// Fallback (file://): sequential in-memory preload via <audio>
 function loadOneAudioSrcInMemory(src, timeoutMs) {
   return new Promise(function(resolve) {
     var a = audioState.cache[src];
@@ -2493,7 +2493,8 @@ function processGameState(gs) {
 
   updateStatusBar(gs);
 
-  if (prevState && prevState.phase === "waiting" && gs.phase === "playing") {
+  var isGameStartTransition = !!(prevState && prevState.phase === "waiting" && gs.phase === "playing");
+  if (isGameStartTransition) {
     playEventSound("gameStart");
   }
 
@@ -2518,7 +2519,15 @@ function processGameState(gs) {
   var turnChanged = prevState && prevState.turn !== gs.turn && !state.inputLocked;
 
   if (turnChanged && !state.inputLocked) {
-    playEventSound(isMyTurn ? "turnMine" : "turnEnemy");
+    if (isGameStartTransition) {
+      // Даём gameStart доиграть (~3.5 сек), потом звук хода
+      var _isMyTurn = isMyTurn, _enemyName = enemyName;
+      setTimeout(function() {
+        playEventSound(_isMyTurn ? "turnMine" : "turnEnemy");
+      }, 3500);
+    } else {
+      playEventSound(isMyTurn ? "turnMine" : "turnEnemy");
+    }
     if (isMyTurn) {
       (async function() {
         await showPhaseAnnouncement("⚡ ВАШ ХОД!", "my");
