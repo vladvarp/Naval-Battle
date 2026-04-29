@@ -1501,40 +1501,44 @@ function backToLogin() {
 }
 
 // ── ЛОББИ: СПИСОК КОМНАТ ──────────────────────────────────────
-function startLobbyPolling() {
-  loadRooms();
-  state.lobbyTimer = setInterval(loadRooms, LOBBY_INTERVAL);
-}
-function stopLobbyPolling() {
-  if (state.lobbyTimer) { clearInterval(state.lobbyTimer); state.lobbyTimer = null; }
-}
-
 var lobbyCountdown = 3;
 var lobbyCountdownTimer = null;
 
+function startLobbyPolling() {
+   loadRooms();
+   state.lobbyTimer = setInterval(function() {
+     loadRooms();
+   }, LOBBY_INTERVAL);
+}
+
+function stopLobbyPolling() {
+   if (state.lobbyTimer) { clearInterval(state.lobbyTimer); state.lobbyTimer = null; }
+   if (lobbyCountdownTimer) { clearInterval(lobbyCountdownTimer); lobbyCountdownTimer = null; }
+}
+
 function startLobbyCountdown() {
-  lobbyCountdown = 3;
-  if (lobbyCountdownTimer) clearInterval(lobbyCountdownTimer);
-  lobbyCountdownTimer = setInterval(function() {
-    lobbyCountdown--;
-    var el = document.getElementById("roomsTimer");
-    if (el) el.textContent = "обновление через " + lobbyCountdown + "с";
-    if (lobbyCountdown <= 0) { lobbyCountdown = 3; }
-  }, 1000);
+   lobbyCountdown = Math.ceil(LOBBY_INTERVAL / 1000);
+   if (lobbyCountdownTimer) clearInterval(lobbyCountdownTimer);
+   
+   lobbyCountdownTimer = setInterval(function() {
+     lobbyCountdown--;
+     var el = document.getElementById("roomsTimer");
+     if (el) el.textContent = "обновление через " + Math.max(0, lobbyCountdown) + "с";
+   }, 1000);
 }
 
 async function loadRooms() {
-  startLobbyCountdown();
-  var el = document.getElementById("roomsTimer");
-  if (el) el.textContent = "обновление через 3с";
-  try {
-    var res = await apiGetRooms();
-    if (!res.ok) return;
-    renderRooms(res.rooms || []);
-  } catch(e) {
-    document.getElementById("roomsList").innerHTML =
-      '<div class="rooms-empty"><span class="icon">⚠</span>Ошибка подключения</div>';
-  }
+   var el = document.getElementById("roomsTimer");
+   if (el) el.textContent = "загрузка...";
+   try {
+     var res = await apiGetRooms();
+     if (!res.ok) return;
+     renderRooms(res.rooms || []);
+   } catch(e) {
+     document.getElementById("roomsList").innerHTML =
+       '<div class="rooms-empty"><span class="icon">⚠</span>Ошибка подключения</div>';
+   }
+   startLobbyCountdown();
 }
 
 function renderRooms(rooms) {
