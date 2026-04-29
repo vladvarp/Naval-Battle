@@ -2191,7 +2191,7 @@ function updateLog(gs, prevState) {
         else if (es.result === "hit") playEventSound("hitMe");
         else if (es.result === "miss") playEventSound("enemyMiss");
       }
-      var eText = es.result === "hit" ? "Попадание!" : es.result === "sunk" ? "Потоплил!" : "Промах";
+      var eText = es.result === "hit" ? "Попадание!" : es.result === "sunk" ? "Потопил!" : "Промах";
       addLog(enemyName + " → " + COL_LABELS[es.x] + ROW_LABELS[es.y] + ": " + eText, es.result);
     }
   }
