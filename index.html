@@ -1427,11 +1427,16 @@ function isCacheStorageAvailable() {
   try { return !!(window.caches && window.caches.open); } catch (e) { return false; }
 }
 
+function isFileProtocol() {
+  try { return (location && location.protocol === "file:"); } catch (e) { return false; }
+}
+
 function toAbsoluteUrl(pathOrUrl) {
   try { return new URL(String(pathOrUrl), location.href).href; } catch (e) { return String(pathOrUrl || ""); }
 }
 
 async function registerAudioServiceWorker() {
+  if (isFileProtocol()) return;
   if (!("serviceWorker" in navigator)) return;
   try {
     await navigator.serviceWorker.register("./sw.js", { scope: "./" });
@@ -1440,6 +1445,7 @@ async function registerAudioServiceWorker() {
 
 async function getAudioCacheUrlSet() {
   if (!isCacheStorageAvailable()) return new Set();
+  if (isFileProtocol()) return new Set();
   try {
     var cache = await caches.open(AUDIO_CACHE_NAME);
     var keys = await cache.keys();
@@ -1454,6 +1460,7 @@ async function getAudioCacheUrlSet() {
 async function getAudioCacheStatus() {
   var total = buildAllAudioSrcList().length;
   if (!isCacheStorageAvailable()) return { total: total, cached: 0 };
+  if (isFileProtocol()) return { total: total, cached: 0 };
   var set = await getAudioCacheUrlSet();
   var cached = 0;
   var list = buildAllAudioSrcList();
@@ -1469,8 +1476,10 @@ async function updateCacheButtons() {
 
   var icon = "🟥";
   try {
-    var st = await getAudioCacheStatus();
-    icon = st.cached <= 0 ? "🟥" : (st.cached >= st.total ? "🟩" : "🟨");
+    if (!isFileProtocol()) {
+      var st = await getAudioCacheStatus();
+      icon = st.cached <= 0 ? "🟥" : (st.cached >= st.total ? "🟩" : "🟨");
+    }
   } catch (e) {}
 
   btns.forEach(function(btn) {
@@ -1487,6 +1496,7 @@ async function cacheAudioFilesToCacheStorage(opts) {
   var timeoutMs = (opts && opts.timeoutMs) || 20000;
 
   if (!isCacheStorageAvailable()) return;
+  if (isFileProtocol()) return;
 
   if (overwrite) {
     try { await caches.delete(AUDIO_CACHE_NAME); } catch (e) {}
@@ -1535,13 +1545,83 @@ async function cacheAudioFilesToCacheStorage(opts) {
   await updateCacheButtons();
 }
 
+// Fallback (file://): sequential in-memory preload via <audio>
+function loadOneAudioSrcInMemory(src, timeoutMs) {
+  return new Promise(function(resolve) {
+    var a = audioState.cache[src];
+    if (!a) {
+      try {
+        a = new Audio(src);
+        a.preload = "auto";
+        audioState.cache[src] = a;
+      } catch (e) {
+        resolve({ src: src, ok: false });
+        return;
+      }
+    }
+
+    var done = false;
+    function finish(ok) {
+      if (done) return;
+      done = true;
+      resolve({ src: src, ok: !!ok });
+    }
+
+    try {
+      a.addEventListener("canplaythrough", function() { finish(true); }, { once: true });
+      a.addEventListener("loadeddata",     function() { finish(true); }, { once: true });
+      a.addEventListener("error",          function() { finish(false); }, { once: true });
+      a.load();
+    } catch (e) {
+      finish(false);
+      return;
+    }
+
+    setTimeout(function() { finish(false); }, timeoutMs || 8000);
+  });
+}
+
+function preloadAllAudioInMemory(opts) {
+  if (audioState.preload.promise) return audioState.preload.promise;
+  var timeoutMs = (opts && opts.timeoutMs) || 8000;
+
+  var srcs = buildPrioritizedAudioSrcList();
+  var primeCount = srcs && typeof srcs._primeCount === "number" ? srcs._primeCount : 0;
+
+  audioState.preload.started = true;
+  audioState.preload.done = false;
+  audioState.preload.promise = null;
+  audioState.preload.total = srcs.length;
+  audioState.preload.finished = 0;
+  audioState.preload.currentSrc = null;
+  audioState.preload.phase = "prime";
+
+  audioState.preload.promise = (async function() {
+    for (var i = 0; i < srcs.length; i++) {
+      var src = srcs[i];
+      audioState.preload.currentSrc = src;
+      audioState.preload.phase = (i < primeCount ? "prime" : "rest");
+      await loadOneAudioSrcInMemory(src, timeoutMs);
+      audioState.preload.finished = i + 1;
+    }
+    audioState.preload.currentSrc = null;
+    audioState.preload.done = true;
+  })();
+
+  return audioState.preload.promise;
+}
+
 function preloadAllAudioToCache(opts) {
   if (audioState.preload.promise) return audioState.preload.promise;
-  audioState.preload.promise = cacheAudioFilesToCacheStorage({
-    overwrite: !!(opts && opts.overwrite),
-    onlyMissing: (opts && typeof opts.onlyMissing === "boolean") ? opts.onlyMissing : true,
-    timeoutMs: (opts && opts.timeoutMs) || 20000
-  });
+  if (isFileProtocol()) {
+    audioState.preload.promise = preloadAllAudioInMemory({ timeoutMs: (opts && opts.timeoutMs) || 8000 });
+  } else {
+    audioState.preload.promise = cacheAudioFilesToCacheStorage({
+      overwrite: !!(opts && opts.overwrite),
+      onlyMissing: (opts && typeof opts.onlyMissing === "boolean") ? opts.onlyMissing : true,
+      timeoutMs: (opts && opts.timeoutMs) || 20000
+    });
+  }
 
   return audioState.preload.promise;
 }
@@ -1617,14 +1697,14 @@ async function renderAudioDebugTable() {
   if (!tbody) return;
   if (poolEl) poolEl.textContent = RANDOM_POOL_SIZE;
 
-  var cachedSet = await getAudioCacheUrlSet();
+  var cachedSet = isFileProtocol() ? null : await getAudioCacheUrlSet();
   var totalExpected = 0, totalLoaded = 0;
   var html = "";
 
   for (var i = 0; i < AUDIO_EVENTS.length; i++) {
     var cfg = AUDIO_EVENTS[i];
     var expected = cfg.files ? cfg.files.length : 0;
-    var loaded = getCachedCountForEvent(cfg, cachedSet);
+    var loaded = isFileProtocol() ? 0 : getCachedCountForEvent(cfg, cachedSet);
     totalExpected += expected;
     totalLoaded += loaded;
 
@@ -1649,7 +1729,9 @@ async function renderAudioDebugTable() {
       var cur = audioState.preload.currentSrc ? prettyAudioName(audioState.preload.currentSrc) : "—";
       nowEl.textContent = "Скачивается сейчас (" + phase + "): " + cur;
     } else if (audioState.preload && audioState.preload.done) {
-      nowEl.textContent = "Скачивание завершено.";
+      nowEl.textContent = isFileProtocol()
+        ? "Готово (режим file://). Для Cache Storage откройте через http://"
+        : "Скачивание завершено.";
     } else {
       nowEl.textContent = "";
     }
