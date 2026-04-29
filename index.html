@@ -868,6 +868,7 @@
     margin-right: 6px;
   }
   .audio-debug-bar {
+    display: block;
     height: 100%;
     border-radius: 3px;
     background: var(--foam);
@@ -1038,6 +1039,33 @@
   </div>
 </div>
 
+<!-- Модальное окно диагностики аудио-кэша (доступно на всех экранах) -->
+<div class="audio-debug-overlay" id="audioDebugOverlay">
+  <div class="audio-debug-card">
+    <button class="audio-debug-close" onclick="closeAudioDebug()">✕</button>
+    <div class="audio-debug-title">📦 АУДИО-КЭШ</div>
+    <div class="audio-debug-subtitle">
+      Пул рандомайзера: <span id="debugPoolSize">500</span> · выбор по модулю N файлов события
+    </div>
+    <table class="audio-debug-table">
+      <thead>
+        <tr>
+          <th>СОБЫТИЕ</th>
+          <th>ФАЙЛОВ</th>
+          <th>ЗАГРУЖЕНО</th>
+          <th>СТАТУС</th>
+        </tr>
+      </thead>
+      <tbody id="audioDebugTableBody"></tbody>
+    </table>
+    <div id="audioDebugNow" style="margin:-8px 0 10px;color:rgba(168,228,255,0.65);font-size:10px;letter-spacing:1px;"></div>
+    <div class="audio-debug-actions">
+      <button class="btn btn-ghost btn-sm" onclick="reloadAudioCache()">🔄 Перезаписать кэш</button>
+      <span class="audio-debug-total" id="audioDebugTotal"></span>
+    </div>
+  </div>
+</div>
+
 <!-- ШАПКА -->
 <header>
   <div class="logo">NAVAL <span>COMBAT</span></div>
@@ -1059,7 +1087,8 @@
     </div>
         <!-- Кнопки действий -->
         <div class="actions-bar">
-          <button class="btn btn-ghost btn-sm" id="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
+          <button class="btn btn-ghost btn-sm" data-role="btnCache" onclick="openAudioDebug()">🟥 Кэш</button>
+          <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
         </div>
   </div>
 
@@ -1086,7 +1115,8 @@
 
     <div style="width:100%;max-width:520px;text-align:center;">
       <button class="btn btn-ghost btn-sm" style="width:auto;padding:8px 20px;" onclick="backToLogin()">← СМЕНИТЬ НИК</button>
-      <button class="btn btn-ghost btn-sm" id="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
+      <button class="btn btn-ghost btn-sm" data-role="btnCache" onclick="openAudioDebug()">🟥 Кэш</button>
+      <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
     </div>
   </div>
 
@@ -1183,33 +1213,9 @@
     <!-- Кнопки действий -->
     <div class="actions-bar">
       <button class="btn btn-ghost btn-sm" id="btnSound" onclick="toggleSound()">🔊 Звук: ВКЛ</button>
-      <button class="btn btn-ghost btn-sm" id="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
-      <button class="btn btn-ghost btn-sm" onclick="openAudioDebug()">📦 Кэш</button>
+      <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
+      <button class="btn btn-ghost btn-sm" data-role="btnCache" onclick="openAudioDebug()">🟥 Кэш</button>
       <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
-    </div>
-
-    <!-- Модальное окно диагностики аудио-кэша -->
-    <div class="audio-debug-overlay" id="audioDebugOverlay">
-      <div class="audio-debug-card">
-        <button class="audio-debug-close" onclick="closeAudioDebug()">✕</button>
-        <div class="audio-debug-title">📦 АУДИО-КЭШ</div>
-        <div class="audio-debug-subtitle">Пул рандомайзера: <span id="debugPoolSize">500</span> · выбор по модулю N файлов события</div>
-        <table class="audio-debug-table">
-          <thead>
-            <tr>
-              <th>СОБЫТИЕ</th>
-              <th>ФАЙЛОВ</th>
-              <th>ЗАГРУЖЕНО</th>
-              <th>СТАТУС</th>
-            </tr>
-          </thead>
-          <tbody id="audioDebugTableBody"></tbody>
-        </table>
-        <div class="audio-debug-actions">
-          <button class="btn btn-ghost btn-sm" onclick="reloadAudioCache()">🔄 Перезаписать кэш</button>
-          <span class="audio-debug-total" id="audioDebugTotal"></span>
-        </div>
-      </div>
     </div>
 
     <!-- Админ-панель -->
@@ -1287,7 +1293,7 @@ var audioState = {
   cache: {},
   currentAudio: null,
   lastPlayerShotAt: 0,
-  preload: { started: false, done: false, total: 0, finished: 0, promise: null },
+  preload: { started: false, done: false, total: 0, finished: 0, promise: null, currentSrc: null, phase: "" },
 };
 
 function setSoundEnabled(enabled) {
@@ -1369,62 +1375,174 @@ function buildAllAudioSrcList() {
   return out;
 }
 
-function preloadAllAudioToCache() {
-  if (audioState.preload.promise) return audioState.preload.promise;
-  audioState.preload.started = true;
+function pickRandom(arr) {
+  if (!arr || !arr.length) return null;
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 
-  var srcs = buildAllAudioSrcList();
+function buildPrioritizedAudioSrcList() {
+  // Сначала: по 1 случайному файлу из каждой категории (AUDIO_EVENTS),
+  // потом: всё остальное (без дублей)
+  var first = [];
+  var rest = [];
+  var seen = {};
+
+  for (var i = 0; i < AUDIO_EVENTS.length; i++) {
+    var cfg = AUDIO_EVENTS[i];
+    if (!cfg || !cfg.folder || !cfg.files || !cfg.files.length) continue;
+    var folder = cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "");
+    var rf = pickRandom(cfg.files);
+    if (rf) {
+      var s0 = folder + "/" + String(rf);
+      if (!seen[s0]) { seen[s0] = true; first.push(s0); }
+    }
+  }
+
+  var all = buildAllAudioSrcList();
+  for (var j = 0; j < all.length; j++) {
+    var s = all[j];
+    if (seen[s]) continue;
+    seen[s] = true;
+    rest.push(s);
+  }
+
+  var out = first.concat(rest);
+  out._primeCount = first.length;
+  return out;
+}
+
+function prettyAudioName(src) {
+  try {
+    var s = String(src || "");
+    return s.length > 44 ? ("…" + s.slice(-43)) : s;
+  } catch (e) {
+    return "";
+  }
+}
+
+// ── CACHE STORAGE + SERVICE WORKER (переживает F5) ─────────────
+var AUDIO_CACHE_NAME = "mb-audio-cache-v1";
+
+function isCacheStorageAvailable() {
+  try { return !!(window.caches && window.caches.open); } catch (e) { return false; }
+}
+
+function toAbsoluteUrl(pathOrUrl) {
+  try { return new URL(String(pathOrUrl), location.href).href; } catch (e) { return String(pathOrUrl || ""); }
+}
+
+async function registerAudioServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  try {
+    await navigator.serviceWorker.register("./sw.js", { scope: "./" });
+  } catch (e) {}
+}
+
+async function getAudioCacheUrlSet() {
+  if (!isCacheStorageAvailable()) return new Set();
+  try {
+    var cache = await caches.open(AUDIO_CACHE_NAME);
+    var keys = await cache.keys();
+    var set = new Set();
+    keys.forEach(function(req) { try { set.add(req.url); } catch (e) {} });
+    return set;
+  } catch (e) {
+    return new Set();
+  }
+}
+
+async function getAudioCacheStatus() {
+  var total = buildAllAudioSrcList().length;
+  if (!isCacheStorageAvailable()) return { total: total, cached: 0 };
+  var set = await getAudioCacheUrlSet();
+  var cached = 0;
+  var list = buildAllAudioSrcList();
+  for (var i = 0; i < list.length; i++) {
+    if (set.has(toAbsoluteUrl(list[i]))) cached++;
+  }
+  return { total: total, cached: cached };
+}
+
+async function updateCacheButtons() {
+  var btns = document.querySelectorAll('[data-role="btnCache"]');
+  if (!btns || !btns.length) return;
+
+  var icon = "🟥";
+  try {
+    var st = await getAudioCacheStatus();
+    icon = st.cached <= 0 ? "🟥" : (st.cached >= st.total ? "🟩" : "🟨");
+  } catch (e) {}
+
+  btns.forEach(function(btn) {
+    btn.textContent = icon + " Кэш";
+  });
+}
+
+async function cacheAudioFilesToCacheStorage(opts) {
+  // opts:
+  // - overwrite: true → удалить кэш и скачать заново
+  // - onlyMissing: true → скачивать только отсутствующие (по умолчанию true)
+  var overwrite = !!(opts && opts.overwrite);
+  var onlyMissing = (opts && typeof opts.onlyMissing === "boolean") ? opts.onlyMissing : true;
+  var timeoutMs = (opts && opts.timeoutMs) || 20000;
+
+  if (!isCacheStorageAvailable()) return;
+
+  if (overwrite) {
+    try { await caches.delete(AUDIO_CACHE_NAME); } catch (e) {}
+  }
+
+  var existing = onlyMissing ? await getAudioCacheUrlSet() : new Set();
+  var cache = await caches.open(AUDIO_CACHE_NAME);
+
+  var srcs = buildPrioritizedAudioSrcList();
+  var primeCount = srcs && typeof srcs._primeCount === "number" ? srcs._primeCount : 0;
+
+  audioState.preload.started = true;
+  audioState.preload.done = false;
+  audioState.preload.promise = null;
   audioState.preload.total = srcs.length;
   audioState.preload.finished = 0;
+  audioState.preload.currentSrc = null;
+  audioState.preload.phase = "prime";
 
-  if (!srcs.length) {
-    audioState.preload.done = true;
-    audioState.preload.promise = Promise.resolve();
-    return audioState.preload.promise;
+  for (var i = 0; i < srcs.length; i++) {
+    var rel = srcs[i];
+    var abs = toAbsoluteUrl(rel);
+    audioState.preload.currentSrc = rel;
+    audioState.preload.phase = (i < primeCount ? "prime" : "rest");
+
+    if (onlyMissing && existing.has(abs)) {
+      audioState.preload.finished = i + 1;
+      continue;
+    }
+
+    try {
+      var ctrl = ("AbortController" in window) ? new AbortController() : null;
+      var t = setTimeout(function() { try { if (ctrl) ctrl.abort(); } catch (e) {} }, timeoutMs);
+      var res = await fetch(abs, { signal: ctrl ? ctrl.signal : undefined, cache: overwrite ? "reload" : "default" });
+      clearTimeout(t);
+      if (res && res.ok) {
+        try { await cache.put(abs, res.clone()); } catch (e) {}
+      }
+    } catch (e) {}
+
+    audioState.preload.finished = i + 1;
   }
 
-  function one(src) {
-    return new Promise(function(resolve) {
-      var a = audioState.cache[src];
-      if (!a) {
-        try {
-          a = new Audio(src);
-          a.preload = "auto";
-          audioState.cache[src] = a;
-        } catch (e) {
-          resolve();
-          return;
-        }
-      }
+  audioState.preload.currentSrc = null;
+  audioState.preload.done = true;
+  await updateCacheButtons();
+}
 
-      var done = false;
-      function finish() {
-        if (done) return;
-        done = true;
-        audioState.preload.finished++;
-        resolve();
-      }
-
-      // Важно: отсутствие файла не должно блокировать запуск игры бесконечно.
-      // Поэтому любой исход (loaded или error) считается "завершено".
-      try {
-        a.addEventListener("canplaythrough", finish, { once: true });
-        a.addEventListener("loadeddata", finish, { once: true });
-        a.addEventListener("error", finish, { once: true });
-        a.load();
-      } catch (e) {
-        finish();
-        return;
-      }
-
-      // Фолбэк на случай, если события не приходят (кросс-браузер)
-      setTimeout(finish, 8000);
-    });
-  }
-
-  audioState.preload.promise = Promise.all(srcs.map(one)).then(function() {
-    audioState.preload.done = true;
+function preloadAllAudioToCache(opts) {
+  if (audioState.preload.promise) return audioState.preload.promise;
+  audioState.preload.promise = cacheAudioFilesToCacheStorage({
+    overwrite: !!(opts && opts.overwrite),
+    onlyMissing: (opts && typeof opts.onlyMissing === "boolean") ? opts.onlyMissing : true,
+    timeoutMs: (opts && opts.timeoutMs) || 20000
   });
+
   return audioState.preload.promise;
 }
 
@@ -1435,7 +1553,8 @@ async function ensureAudioReadyBeforeGame() {
   var timer = setInterval(function() {
     var total = audioState.preload.total || 0;
     var fin = audioState.preload.finished || 0;
-    setAudioLoadingOverlay(true, "Загрузка " + fin + "/" + total);
+    var cur = audioState.preload.currentSrc ? (" · " + prettyAudioName(audioState.preload.currentSrc)) : "";
+    setAudioLoadingOverlay(true, "Загрузка " + fin + "/" + total + cur);
   }, 120);
 
   try {
@@ -1478,32 +1597,34 @@ function playEventSound(id) {
 
 // ── ДИАГНОСТИКА АУДИО-КЭША ───────────────────────────────────
 
-function getCachedCountForEvent(cfg) {
+function getCachedCountForEvent(cfg, cachedUrlSet) {
   if (!cfg || !cfg.folder || !cfg.files) return 0;
   var folder = cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "");
   var count = 0;
   for (var i = 0; i < cfg.files.length; i++) {
     var src = folder + "/" + String(cfg.files[i]);
-    var a = audioState.cache[src];
-    if (a && (a.readyState >= 2 || a.duration > 0)) count++;
+    var abs = toAbsoluteUrl(src);
+    if (cachedUrlSet && cachedUrlSet.has(abs)) count++;
   }
   return count;
 }
 
-function renderAudioDebugTable() {
+async function renderAudioDebugTable() {
   var tbody = document.getElementById("audioDebugTableBody");
   var totalEl = document.getElementById("audioDebugTotal");
   var poolEl = document.getElementById("debugPoolSize");
+  var nowEl = document.getElementById("audioDebugNow");
   if (!tbody) return;
   if (poolEl) poolEl.textContent = RANDOM_POOL_SIZE;
 
+  var cachedSet = await getAudioCacheUrlSet();
   var totalExpected = 0, totalLoaded = 0;
   var html = "";
 
   for (var i = 0; i < AUDIO_EVENTS.length; i++) {
     var cfg = AUDIO_EVENTS[i];
     var expected = cfg.files ? cfg.files.length : 0;
-    var loaded = getCachedCountForEvent(cfg);
+    var loaded = getCachedCountForEvent(cfg, cachedSet);
     totalExpected += expected;
     totalLoaded += loaded;
 
@@ -1521,13 +1642,25 @@ function renderAudioDebugTable() {
 
   tbody.innerHTML = html;
   if (totalEl) totalEl.textContent = "Итого: " + totalLoaded + "/" + totalExpected + " файлов";
+
+  if (nowEl) {
+    if (audioState.preload && audioState.preload.started && !audioState.preload.done) {
+      var phase = audioState.preload.phase === "prime" ? "первая волна" : "остаток";
+      var cur = audioState.preload.currentSrc ? prettyAudioName(audioState.preload.currentSrc) : "—";
+      nowEl.textContent = "Скачивается сейчас (" + phase + "): " + cur;
+    } else if (audioState.preload && audioState.preload.done) {
+      nowEl.textContent = "Скачивание завершено.";
+    } else {
+      nowEl.textContent = "";
+    }
+  }
 }
 
 function openAudioDebug() {
   renderAudioDebugTable();
   document.getElementById("audioDebugOverlay").classList.add("show");
   // Обновляем таблицу каждые 300мс пока окно открыто
-  audioState._debugInterval = setInterval(renderAudioDebugTable, 300);
+  audioState._debugInterval = setInterval(function() { renderAudioDebugTable(); }, 300);
 }
 
 function closeAudioDebug() {
@@ -1536,13 +1669,12 @@ function closeAudioDebug() {
 }
 
 function reloadAudioCache() {
-  // Сбрасываем кэш и состояние предзагрузки
+  // Сбрасываем in-memory аудио и делаем полную перезапись Cache Storage
   audioState.cache = {};
   audioState.currentAudio = null;
-  audioState.preload = { started: false, done: false, total: 0, finished: 0, promise: null };
+  audioState.preload = { started: false, done: false, total: 0, finished: 0, promise: null, currentSrc: null, phase: "" };
   renderAudioDebugTable();
-  // Запускаем предзагрузку заново
-  preloadAllAudioToCache();
+  preloadAllAudioToCache({ overwrite: true, onlyMissing: false });
 }
 
 // ── ПОЛНЫЙ ЭКРАН ──────────────────────────────────────────────
@@ -1555,16 +1687,18 @@ function isFullscreenSupported() {
 }
 
 function updateFullscreenButton() {
-  var btn = document.getElementById("btnFullscreen");
-  if (!btn) return;
+  var btns = document.querySelectorAll('[data-role="btnFullscreen"]');
+  if (!btns || !btns.length) return;
 
   if (isIphone() || !isFullscreenSupported()) {
-    btn.style.display = "none";
+    btns.forEach(function(btn) { btn.style.display = "none"; });
     return;
   }
 
-  btn.style.display = "";
-  btn.textContent = (document.fullscreenElement ? "🗗" : "⛶") + " Экран";
+  btns.forEach(function(btn) {
+    btn.style.display = "";
+    btn.textContent = (document.fullscreenElement ? "🗗" : "⛶") + " Экран";
+  });
 }
 
 function toggleFullscreen() {
@@ -2489,8 +2623,14 @@ async function restartGame() {
   updateSoundButton();
   updateFullscreenButton();
 
-  // Стартуем загрузку аудио как можно раньше (до входа в игру)
-  preloadAllAudioToCache();
+  // Регистрируем SW, чтобы аудио читалось из Cache Storage (переживает F5)
+  registerAudioServiceWorker();
+
+  // Иконка кэша на кнопке (🟥/🟨/🟩)
+  updateCacheButtons();
+
+  // Докачиваем недостающее в Cache Storage (без перезаписи)
+  preloadAllAudioToCache({ overwrite: false, onlyMissing: true });
 
   // Подставляем сохранённый никнейм
   var savedNick = loadSavedNickname();
