@@ -786,6 +786,114 @@
   /* ── НИЖНЯЯ ПАНЕЛЬ ──────────────────────────────────── */
   .actions-bar { display: flex; gap: 12px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
 
+  /* ── МОДАЛЬНОЕ ОКНО АУДИО-КЭША ───────────────────────── */
+  .audio-debug-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(2,13,24,0.92); z-index: 1300;
+    align-items: center; justify-content: center;
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    padding: 16px;
+  }
+  .audio-debug-overlay.show { display: flex; }
+  .audio-debug-card {
+    background: rgba(4,31,53,0.98);
+    border: 1px solid rgba(26,159,212,0.4);
+    border-radius: 14px;
+    padding: 24px 28px;
+    width: 100%;
+    max-width: 520px;
+    max-height: 85vh;
+    overflow-y: auto;
+    box-shadow: 0 0 60px rgba(26,159,212,0.15);
+    position: relative;
+  }
+  .audio-debug-card::-webkit-scrollbar { width: 4px; }
+  .audio-debug-card::-webkit-scrollbar-thumb { background: rgba(26,159,212,0.3); border-radius: 2px; }
+  .audio-debug-title {
+    font-family: 'Russo One', sans-serif;
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: var(--foam);
+    margin-bottom: 4px;
+  }
+  .audio-debug-subtitle {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: rgba(168,228,255,0.4);
+    margin-bottom: 18px;
+  }
+  .audio-debug-close {
+    position: absolute;
+    top: 16px; right: 18px;
+    background: none; border: none;
+    color: rgba(168,228,255,0.5);
+    font-size: 18px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 4px;
+    transition: color 0.15s;
+  }
+  .audio-debug-close:hover { color: var(--foam); }
+  .audio-debug-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 18px;
+    font-size: 11px;
+  }
+  .audio-debug-table th {
+    text-align: left;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: rgba(168,228,255,0.4);
+    padding: 0 8px 8px 0;
+    border-bottom: 1px solid rgba(26,159,212,0.15);
+  }
+  .audio-debug-table td {
+    padding: 7px 8px 7px 0;
+    border-bottom: 1px solid rgba(26,159,212,0.08);
+    vertical-align: middle;
+    color: var(--white);
+    letter-spacing: 0.5px;
+  }
+  .audio-debug-table td:last-child { padding-right: 0; }
+  .audio-debug-bar-wrap {
+    background: rgba(2,13,24,0.7);
+    border-radius: 3px;
+    height: 5px;
+    width: 80px;
+    overflow: hidden;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  .audio-debug-bar {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--foam);
+    transition: width 0.3s;
+  }
+  .audio-debug-bar.full { background: #2ecc71; }
+  .audio-debug-bar.partial { background: var(--gold); }
+  .audio-debug-bar.empty { background: var(--red); }
+  .audio-debug-count { font-size: 10px; color: rgba(168,228,255,0.6); }
+  .audio-debug-count.ok { color: #7dffb3; }
+  .audio-debug-count.warn { color: var(--gold); }
+  .audio-debug-count.bad { color: #ff9999; }
+  .audio-debug-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    padding-top: 4px;
+  }
+  .audio-debug-total {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: rgba(168,228,255,0.45);
+    margin-left: auto;
+  }
+
   /* ── ОЖИДАНИЕ ─────────────────────────────────────────── */
   .waiting-msg { text-align: center; padding: 40px 20px; }
   .waiting-msg .icon { font-size: 48px; margin-bottom: 16px; animation: wave 3s ease-in-out infinite; display: block; }
@@ -1071,7 +1179,32 @@
     <div class="actions-bar">
       <button class="btn btn-ghost btn-sm" id="btnSound" onclick="toggleSound()">🔊 Звук: ВКЛ</button>
       <button class="btn btn-ghost btn-sm" id="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
+      <button class="btn btn-ghost btn-sm" onclick="openAudioDebug()">📦 Кэш</button>
       <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
+    </div>
+
+    <!-- Модальное окно диагностики аудио-кэша -->
+    <div class="audio-debug-overlay" id="audioDebugOverlay">
+      <div class="audio-debug-card">
+        <button class="audio-debug-close" onclick="closeAudioDebug()">✕</button>
+        <div class="audio-debug-title">📦 АУДИО-КЭШ</div>
+        <div class="audio-debug-subtitle">Пул рандомайзера: <span id="debugPoolSize">500</span> · выбор по модулю N файлов события</div>
+        <table class="audio-debug-table">
+          <thead>
+            <tr>
+              <th>СОБЫТИЕ</th>
+              <th>ФАЙЛОВ</th>
+              <th>ЗАГРУЖЕНО</th>
+              <th>СТАТУС</th>
+            </tr>
+          </thead>
+          <tbody id="audioDebugTableBody"></tbody>
+        </table>
+        <div class="audio-debug-actions">
+          <button class="btn btn-ghost btn-sm" onclick="reloadAudioCache()">🔄 Перезаписать кэш</button>
+          <span class="audio-debug-total" id="audioDebugTotal"></span>
+        </div>
+      </div>
     </div>
 
     <!-- Админ-панель -->
@@ -1114,25 +1247,32 @@ var POLL_INTERVAL  = 300;  // мс — polling состояния игры
 var LOBBY_INTERVAL = 10000; // мс — обновление списка комнат
 
 // ── АУДИО ────────────────────────────────────────────────────
-function makeFiles10() {
+
+// Пул рандомайзера: случайное число 0..(RANDOM_POOL_SIZE-1), затем % n → индекс файла.
+// makeFiles(10),  число 304 → 304%10=4  → 5.mp3
+// makeFiles(40),  число 304 → 304%40=24 → 25.mp3
+var RANDOM_POOL_SIZE = 500;
+
+function makeFiles(n) {
   var arr = [];
-  for (var i = 1; i <= 10; i++) arr.push(i + ".mp3");
+  for (var i = 1; i <= n; i++) arr.push(i + ".mp3");
   return arr;
 }
+function makeFiles10() { return makeFiles(10); }
 
 var AUDIO_EVENTS = [
-  { id: "gameStart", label: "🎮 Начало игры",             folder: "audio/gameStart", files: makeFiles10() },
-  { id: "gameWin",   label: "🏆 Победа (наша)",           folder: "audio/gameWin",   files: makeFiles10() },
-  { id: "gameLose",  label: "💀 Поражение",               folder: "audio/gameLose",  files: makeFiles10() },
-  { id: "shoot",     label: "💥 Выстрел (мы стреляем)",   folder: "audio/shoot",     files: makeFiles10() },
-  { id: "hitEnemy",  label: "🎯 Попадание по противнику", folder: "audio/hitEnemy",  files: makeFiles10() },
-  { id: "sunkEnemy", label: "⚓ Потопили корабль врага",   folder: "audio/sunkEnemy", files: makeFiles10() },
-  { id: "hitMe",     label: "🔥 Противник попал по нам",  folder: "audio/hitMe",     files: makeFiles10() },
-  { id: "sunkMe",    label: "💦 Наш корабль потоплен",    folder: "audio/sunkMe",    files: makeFiles10() },
-  { id: "miss",      label: "🌊 Промах (наш)",            folder: "audio/miss",      files: makeFiles10() },
-  { id: "enemyMiss", label: "🌊 Противник промахнулся",   folder: "audio/enemyMiss", files: makeFiles10() },
-  { id: "turnMine",  label: "⚡ Ваш ход",                 folder: "audio/turnMine",  files: makeFiles10() },
-  { id: "turnEnemy", label: "⏳ Ход противника",          folder: "audio/turnEnemy", files: makeFiles10() },
+  { id: "gameStart", label: "🎮 Начало игры",             folder: "audio/gameStart", files: makeFiles(10) },
+  { id: "gameWin",   label: "🏆 Победа (наша)",           folder: "audio/gameWin",   files: makeFiles(10) },
+  { id: "gameLose",  label: "💀 Поражение",               folder: "audio/gameLose",  files: makeFiles(10) },
+  { id: "shoot",     label: "💥 Выстрел (мы стреляем)",   folder: "audio/shoot",     files: makeFiles(10) },
+  { id: "hitEnemy",  label: "🎯 Попадание по противнику", folder: "audio/hitEnemy",  files: makeFiles(10) },
+  { id: "sunkEnemy", label: "⚓ Потопили корабль врага",  folder: "audio/sunkEnemy", files: makeFiles(10) },
+  { id: "hitMe",     label: "🔥 Противник попал по нам",  folder: "audio/hitMe",     files: makeFiles(10) },
+  { id: "sunkMe",    label: "💦 Наш корабль потоплен",    folder: "audio/sunkMe",    files: makeFiles(10) },
+  { id: "miss",      label: "🌊 Промах (наш)",            folder: "audio/miss",      files: makeFiles(10) },
+  { id: "enemyMiss", label: "🌊 Противник промахнулся",   folder: "audio/enemyMiss", files: makeFiles(10) },
+  { id: "turnMine",  label: "⚡ Ваш ход",                 folder: "audio/turnMine",  files: makeFiles(10) },
+  { id: "turnEnemy", label: "⏳ Ход противника",          folder: "audio/turnEnemy", files: makeFiles(10) },
 ];
 
 var audioState = {
@@ -1308,7 +1448,8 @@ function playEventSound(id) {
   var cfg = getAudioEventConfig(id);
   if (!cfg || !cfg.folder || !cfg.files || !cfg.files.length) return;
 
-  var file = cfg.files[Math.floor(Math.random() * cfg.files.length)];
+  var poolRoll = Math.floor(Math.random() * RANDOM_POOL_SIZE);
+  var file = cfg.files[poolRoll % cfg.files.length];
   var src = cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "") + "/" + String(file);
 
   try {
@@ -1328,6 +1469,75 @@ function playEventSound(id) {
     try { a.currentTime = 0; } catch (e) {}
     a.play().catch(function(){});
   } catch (e) {}
+}
+
+// ── ДИАГНОСТИКА АУДИО-КЭША ───────────────────────────────────
+
+function getCachedCountForEvent(cfg) {
+  if (!cfg || !cfg.folder || !cfg.files) return 0;
+  var folder = cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "");
+  var count = 0;
+  for (var i = 0; i < cfg.files.length; i++) {
+    var src = folder + "/" + String(cfg.files[i]);
+    var a = audioState.cache[src];
+    if (a && (a.readyState >= 2 || a.duration > 0)) count++;
+  }
+  return count;
+}
+
+function renderAudioDebugTable() {
+  var tbody = document.getElementById("audioDebugTableBody");
+  var totalEl = document.getElementById("audioDebugTotal");
+  var poolEl = document.getElementById("debugPoolSize");
+  if (!tbody) return;
+  if (poolEl) poolEl.textContent = RANDOM_POOL_SIZE;
+
+  var totalExpected = 0, totalLoaded = 0;
+  var html = "";
+
+  for (var i = 0; i < AUDIO_EVENTS.length; i++) {
+    var cfg = AUDIO_EVENTS[i];
+    var expected = cfg.files ? cfg.files.length : 0;
+    var loaded = getCachedCountForEvent(cfg);
+    totalExpected += expected;
+    totalLoaded += loaded;
+
+    var pct = expected > 0 ? Math.round((loaded / expected) * 100) : 0;
+    var barClass = pct === 100 ? "full" : pct > 0 ? "partial" : "empty";
+    var countClass = pct === 100 ? "ok" : pct > 0 ? "warn" : "bad";
+
+    html += "<tr>";
+    html += "<td>" + (cfg.label || cfg.id) + "</td>";
+    html += "<td style='color:rgba(168,228,255,0.5);'>" + expected + "</td>";
+    html += "<td><span class='audio-debug-bar-wrap'><span class='audio-debug-bar " + barClass + "' style='width:" + pct + "%'></span></span></td>";
+    html += "<td><span class='audio-debug-count " + countClass + "'>" + loaded + "/" + expected + "</span></td>";
+    html += "</tr>";
+  }
+
+  tbody.innerHTML = html;
+  if (totalEl) totalEl.textContent = "Итого: " + totalLoaded + "/" + totalExpected + " файлов";
+}
+
+function openAudioDebug() {
+  renderAudioDebugTable();
+  document.getElementById("audioDebugOverlay").classList.add("show");
+  // Обновляем таблицу каждые 300мс пока окно открыто
+  audioState._debugInterval = setInterval(renderAudioDebugTable, 300);
+}
+
+function closeAudioDebug() {
+  document.getElementById("audioDebugOverlay").classList.remove("show");
+  if (audioState._debugInterval) { clearInterval(audioState._debugInterval); audioState._debugInterval = null; }
+}
+
+function reloadAudioCache() {
+  // Сбрасываем кэш и состояние предзагрузки
+  audioState.cache = {};
+  audioState.currentAudio = null;
+  audioState.preload = { started: false, done: false, total: 0, finished: 0, promise: null };
+  renderAudioDebugTable();
+  // Запускаем предзагрузку заново
+  preloadAllAudioToCache();
 }
 
 // ── ПОЛНЫЙ ЭКРАН ──────────────────────────────────────────────
