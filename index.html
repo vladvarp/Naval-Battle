@@ -26,7 +26,7 @@
     --my-ship:     #27ae60;
     --gold:        #f0c040;
     --red:         #e74c3c;
-    --cell-size:   36px;
+    --cell-size:   clamp(22px, calc((100vw - 130px) / 9), 36px);
     --gap:         2px;
     --radius:      4px;
   }
@@ -558,34 +558,45 @@
   .board-title.enemy { color: var(--red); }
 
   /* ── СЕТКА ПОЛЯ ──────────────────────────────────────── */
-  .grid-wrapper { display: flex; gap: 0; }
-  .grid-labels-col {
-    display: flex; flex-direction: column;
-    gap: var(--gap);
-    margin-top: 0;
-    margin-right: 4px;
+  /*
+   * wrapper — CSS grid 2×2:
+   *  [пусто]      [буквы А–К  ]
+   *  [цифры 1–10] [игровое поле]
+   */
+  .grid-wrapper {
+    display: inline-grid;
+    grid-template-columns: 18px auto;
+    grid-template-rows: auto auto;
+    gap: 3px;
   }
   .grid-labels-row {
+    grid-column: 2; grid-row: 1;
     display: flex; gap: var(--gap);
-    margin-left: 0; margin-bottom: 4px;
-    padding-left: 24px;
   }
-  .grid-label {
-    width: var(--cell-size); height: var(--cell-size);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 10px; color: rgba(168,228,255,0.35); letter-spacing: 0;
-  }
-  .grid-label-side {
-    width: 20px; height: var(--cell-size);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 10px; color: rgba(168,228,255,0.35);
+  .grid-labels-col {
+    grid-column: 1; grid-row: 2;
+    display: flex; flex-direction: column;
+    gap: var(--gap);
   }
   .grid {
+    grid-column: 2; grid-row: 2;
     display: grid;
     grid-template-columns: repeat(10, var(--cell-size));
     grid-template-rows:    repeat(10, var(--cell-size));
     gap: var(--gap);
     position: relative;
+  }
+  .grid-label {
+    width: var(--cell-size); height: var(--cell-size);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: rgba(168,228,255,0.35); letter-spacing: 0;
+    flex-shrink: 0;
+  }
+  .grid-label-side {
+    width: 18px; height: var(--cell-size);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: rgba(168,228,255,0.35);
+    flex-shrink: 0;
   }
 
   /* ── КЛЕТКИ ПОЛЯ ─────────────────────────────────────── */
@@ -977,8 +988,7 @@
   }
 
   /* ── АДАПТИВНОСТЬ ─────────────────────────────────────── */
-  @media (max-width: 480px) {
-    :root { --cell-size: 28px; --gap: 1px; }
+  @media (max-width: 640px) {
     .app { padding: 10px; }
     header { padding: 16px 12px 12px; }
     .login-card { padding: 22px 16px; }
@@ -1001,16 +1011,6 @@
     .legend-item { font-size: 9px; }
     .room-name { font-size: 12px; }
     .room-idle { font-size: 9px; }
-  }
-  @media (max-width: 360px) {
-    :root { --cell-size: 24px; }
-    .grid-label { font-size: 8px; }
-    .grid-label-side { font-size: 8px; width: 16px; }
-  }
-  @media (max-width: 640px) and (min-width: 481px) {
-    :root { --cell-size: 30px; }
-    .board-panel { padding: 14px 10px; }
-    .app { padding: 14px; }
   }
 </style>
 </head>
@@ -1107,7 +1107,7 @@
 
     <div class="lobby-card">
       <h2 style="display:flex;align-items:center;justify-content:space-between;">
-        <span>🌊 ОТКРЫТЫЕ КОМНАТЫ</span>
+        <span>🌊 КОМНАТЫ</span>
         <span id="roomsTimer" style="font-size:10px;color:rgba(168,228,255,0.3);letter-spacing:1px;font-family:'Share Tech Mono',monospace;"></span>
       </h2>
       <div class="rooms-list" id="roomsList">
@@ -1117,9 +1117,12 @@
 
     <div style="width:100%;max-width:520px;text-align:center;">
       <button class="btn btn-ghost btn-sm" style="width:auto;padding:8px 20px;" onclick="backToLogin()">← СМЕНИТЬ НИК</button>
+    </div>
+    <div style="width:100%;max-width:520px;text-align:center;">
       <button class="btn btn-ghost btn-sm" data-role="btnCache" onclick="openAudioDebug()">🟥 Кэш</button>
       <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
     </div>
+
   </div>
 
   <!-- ── ИГРОВОЙ ЭКРАН ────────────────────────────────── -->
@@ -1185,8 +1188,8 @@
           <div class="board-panel" id="myBoardPanel">
             <div class="board-dimmed" id="myBoardDimmed"></div>
             <div class="board-title">⚓ МОЁ ПОЛЕ</div>
-            <div class="grid-labels-row" id="myLabelsRow"></div>
             <div class="grid-wrapper">
+              <div class="grid-labels-row" id="myLabelsRow"></div>
               <div class="grid-labels-col" id="myLabelsCol"></div>
               <div class="grid" id="myGrid"></div>
             </div>
@@ -1196,8 +1199,8 @@
           <div class="board-panel" id="enemyBoardPanel" style="display:none;">
             <div class="board-dimmed" id="enemyBoardDimmed"></div>
             <div class="board-title enemy">🎯 ПОЛЕ ПРОТИВНИКА</div>
-            <div class="grid-labels-row" id="enemyLabelsRow"></div>
             <div class="grid-wrapper">
+              <div class="grid-labels-row" id="enemyLabelsRow"></div>
               <div class="grid-labels-col" id="enemyLabelsCol"></div>
               <div class="grid" id="enemyGrid"></div>
             </div>
@@ -2579,7 +2582,7 @@ function updateStatusBar(gs) {
   } else {
     turnEl.textContent = turnPlayer.nickname;
     if (gs.turn === state.playerId) {
-      turnEl.textContent += " (ВАШ ХОД)";
+      turnEl.textContent += "";
       turnEl.classList.add("active");
     } else {
       turnEl.classList.remove("active");
