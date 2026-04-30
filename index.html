@@ -90,6 +90,15 @@
     0%   { transform: scale(0); opacity: 0.7; border-width: 3px; }
     100% { transform: scale(2.5); opacity: 0; border-width: 1px; }
   }
+  @keyframes wave-ring {
+    0%   { transform: scale(0.12); opacity: 0.95; }
+    100% { transform: scale(3.6); opacity: 0; }
+  }
+  @keyframes wave-core {
+    0%   { transform: scale(0.12); opacity: 0.95; }
+    55%  { transform: scale(1.15); opacity: 0.62; }
+    100% { transform: scale(1.55); opacity: 0; }
+  }
   @keyframes board-slide-in-left {
     from { opacity: 0; transform: translateX(-60px) scale(0.95); }
     to   { opacity: 1; transform: translateX(0) scale(1); }
@@ -785,6 +794,62 @@
     animation: splash-ring 0.6s ease-out forwards;
     pointer-events: none;
     z-index: 10;
+  }
+  .fx-wave {
+    position: absolute;
+    inset: -18%;
+    pointer-events: none;
+    z-index: 12;
+  }
+  .fx-wave::before,
+  .fx-wave::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 34%;
+    height: 34%;
+    transform: translate(-50%, -50%) scale(0.2);
+    border-radius: 50%;
+    border: 3px solid rgba(200,245,255,0.85);
+    box-shadow:
+      0 0 20px rgba(168,228,255,0.35),
+      0 0 34px rgba(26,159,212,0.20);
+    animation: wave-ring 1.05s ease-out forwards;
+  }
+  .fx-wave::after {
+    border-color: rgba(26,159,212,0.75);
+    animation-delay: 0.14s;
+    animation-duration: 1.15s;
+  }
+  .fx-wave .ring3 {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 44%;
+    height: 44%;
+    transform: translate(-50%, -50%) scale(0.12);
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.35);
+    box-shadow: 0 0 26px rgba(168,228,255,0.20);
+    animation: wave-ring 1.25s ease-out forwards;
+    animation-delay: 0.26s;
+  }
+  .fx-wave .core {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 74%;
+    height: 74%;
+    transform: translate(-50%, -50%) scale(0.2);
+    border-radius: 50%;
+    background: radial-gradient(circle,
+      rgba(255,255,255,0.95) 0%,
+      rgba(220,250,255,0.55) 22%,
+      rgba(168,228,255,0.35) 44%,
+      rgba(168,228,255,0) 74%);
+    animation: wave-core 0.7s ease-out forwards;
+    filter: drop-shadow(0 0 18px rgba(168,228,255,0.45));
   }
 
   .board-shake { animation: shake 0.45s cubic-bezier(0.36,0.07,0.19,0.97) both; }
@@ -1987,6 +2052,7 @@ var state = {
   prevTurn:     null,
   lastShotCount: { p1: 0, p2: 0 },
   lastShot:     { my: null, enemy: null }, // {x,y}
+  enemyShotShowUntil: 0, // timestamp ms: держим "моё поле" до этого момента
 };
 
 var COL_LABELS = ["А","Б","В","Г","Д","Е","Ж","З","И","К"];
@@ -2073,6 +2139,10 @@ function showPhaseAnnouncement(text, type) {
       setTimeout(function() { el.className = "phase-announcement"; resolve(); }, 220);
     }, 900);
   });
+}
+
+function sleepMs(ms) {
+  return new Promise(function(resolve) { setTimeout(resolve, Math.max(0, ms || 0)); });
 }
 
 // ── ЭКРАНЫ ───────────────────────────────────────────────────
@@ -2517,6 +2587,41 @@ function playImpactEffect(cell, result) {
   });
 }
 
+// ── ЭФФЕКТ ВХОДЯЩЕГО ВЫСТРЕЛА (ПО НАМ) ────────────────────────
+function playIncomingImpactEffect(cell, result) {
+  return new Promise(function(resolve) {
+    if (!cell) { resolve(); return; }
+
+    // Волны — всегда (и на hit, и на miss), чтобы было "куда прилетело"
+    var wave = document.createElement("div");
+    wave.className = "fx-wave";
+    var core = document.createElement("div");
+    core.className = "core";
+    wave.appendChild(core);
+    var ring3 = document.createElement("div");
+    ring3.className = "ring3";
+    wave.appendChild(ring3);
+    cell.appendChild(wave);
+
+    if (result === "hit" || result === "sunk") {
+      var fx = document.createElement("div");
+      fx.className = "fx-explosion";
+      cell.appendChild(fx);
+      var panel = document.getElementById("myBoardPanel");
+      panel.classList.remove("board-shake"); void panel.offsetWidth; panel.classList.add("board-shake");
+      setTimeout(function() {
+        if (fx.parentNode) fx.parentNode.removeChild(fx);
+        if (panel) panel.classList.remove("board-shake");
+      }, 520);
+    }
+
+    setTimeout(function() {
+      if (wave.parentNode) wave.parentNode.removeChild(wave);
+      resolve();
+    }, 1250);
+  });
+}
+
 // ── ЛОКАЛЬНОЕ ОБНОВЛЕНИЕ ВЫСТРЕЛА ─────────────────────────────
 // res — ответ сервера с sunkCells и sunkPerimeter
 function applyLocalShot(x, y, result, res) {
@@ -2688,6 +2793,9 @@ function processGameState(gs) {
     if (isMyTurn) {
       (async function() {
         await showPhaseAnnouncement("⚡ ВАШ ХОД!", "my");
+        // Если только что был выстрел противника — задержим переключение, чтобы игрок увидел попадание
+        var wait = state.enemyShotShowUntil ? (state.enemyShotShowUntil - Date.now()) : 0;
+        if (wait > 0) await sleepMs(wait);
         switchView("enemy", true);
         updateTurnBadge(true, enemyName);
         setEnemyGridShootable(true);
@@ -2852,6 +2960,17 @@ function updateLog(gs, prevState) {
     for (var j = (prevEnemy ? prevEnemy.length : 0); j < enemyShots.length; j++) {
       var es = enemyShots[j];
       state.lastShot.enemy = { x: es.x, y: es.y };
+
+      // Показываем входящий выстрел на "моём поле" и даём время заметить
+      // (на свой ход переключимся с задержкой)
+      state.enemyShotShowUntil = Date.now() + 1200;
+      if (state.currentView !== "mine") switchView("mine", true);
+      (function(x, y, r) {
+        var myCell = getMyCellElement(x, y);
+        // эффект запускаем асинхронно, без ожидания polling
+        playIncomingImpactEffect(myCell, r || "miss");
+      })(es.x, es.y, es.result);
+
       // Иногда вражеские выстрелы "догоняют" polling-ом и могут наложиться на звук нашего выстрела.
       // Подавляем вражеские SFX, если прямо сейчас мы в процессе выстрела или выстрелили совсем недавно.
       var suppressEnemySfx = state.inputLocked || (Date.now() - (audioState.lastPlayerShotAt || 0) < 1200);
