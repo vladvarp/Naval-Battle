@@ -2068,11 +2068,17 @@ function playEventSound(id) {
   // сохраняем изменившиеся веса/счётчики (переживает F5)
   saveAudioRandToStorage();
 
-  // В очередь: доигрываем звуки до конца
-  try {
+  // ── ИСПРАВЛЕНИЕ ОЧЕРЕДИ ─────────────────────────────────────
+  // Только текущее (уже играет) + САМОЕ ПОСЛЕДНЕЕ событие.
+  // Все промежуточные звуки автоматически отбрасываются.
+  if (audioState.queue.length > 0) {
+    audioState.queue[audioState.queue.length - 1] = src; // заменяем последнее
+  } else {
     audioState.queue.push(src);
-    pumpAudioQueue();
-  } catch(e) {}
+  }
+
+  pumpAudioQueue();
+
 
   // Если окно вероятностей открыто — обновим его "на лету"
   try {
