@@ -710,7 +710,8 @@
     max-width: calc(10 * var(--cell-size) + 9 * var(--gap));
     display: flex;
     flex-wrap: wrap;
-    gap: 4px 6px;
+    /* зазор теперь между кораблями (а внутри корабля сегменты без зазора) */
+    gap: 2px 0px;
     justify-content: center;
     align-items: center;
     padding: 2px 2px 0;
@@ -719,14 +720,14 @@
   }
   .fleet-indicator.in-btn {
     max-width: 100%;
-    gap: 3px 5px;
+    gap: 2px 0px;
     padding: 0;
     margin: 0;
     opacity: 0.95;
   }
   .fleet-ship {
     display: inline-flex;
-    gap: 2px;
+    gap: 0;
     padding: 2px 3px;
     border-radius: 6px;
     background: rgba(2,13,24,0.35);
@@ -886,7 +887,18 @@
     padding: 16px;
     margin-bottom: 20px;
   }
-  .log-panel h3 { font-size: 10px; letter-spacing: 3px; color: rgba(168,228,255,0.5); margin-bottom: 10px; }
+  .log-panel summary {
+    cursor: pointer;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: rgba(168,228,255,0.5);
+    user-select: none;
+    outline: none;
+    list-style: none;
+  }
+  .log-panel summary::-webkit-details-marker { display: none; }
+  .log-panel summary:hover { color: rgba(168,228,255,0.75); }
+  .log-panel[open] summary { margin-bottom: 10px; }
   .log-list {
     list-style: none; display: flex; flex-direction: column; gap: 4px;
     max-height: 120px; overflow-y: auto;
@@ -1238,6 +1250,31 @@
   </div>
 </div>
 
+<!-- Модальное окно вероятностей звуков (в рамках сессии) -->
+<div class="audio-debug-overlay" id="audioProbOverlay">
+  <div class="audio-debug-card">
+    <button class="audio-debug-close" onclick="closeAudioProb()">✕</button>
+    <div class="audio-debug-title">🎲 ВЕРОЯТНОСТИ ЗВУКОВ</div>
+    <div class="audio-debug-subtitle">
+      Пул: <span id="audioProbPoolSize">100</span> · отображение: вес 0–100 (у самого вероятного = 100)
+    </div>
+    <div class="audio-debug-actions" style="margin-bottom:10px;">
+      <select id="audioProbEventSelect" class="btn btn-ghost btn-sm" style="padding:8px 10px;min-width:180px;" onchange="renderAudioProbabilities()"></select>
+      <span class="audio-debug-total" id="audioProbEventMeta"></span>
+    </div>
+    <table class="audio-debug-table">
+      <thead>
+        <tr>
+          <th>ФАЙЛ</th>
+          <th>ВЕС (0–100)</th>
+          <th>СРАБОТАЛО</th>
+        </tr>
+      </thead>
+      <tbody id="audioProbTableBody"></tbody>
+    </table>
+  </div>
+</div>
+
 <!-- ШАПКА -->
 <header>
   <div class="logo">NAVAL⚓<span>COMBAT</span></div>
@@ -1384,20 +1421,22 @@
         </div>
       </div>
 
-      <!-- Журнал ходов -->
-      <div class="log-panel">
-        <h3>📋 ЖУРНАЛ ХОДОВ</h3>
-        <ul class="log-list" id="logList"></ul>
-      </div>
-    </div>
-
-    <!-- Кнопки действий -->
+          <!-- Кнопки действий -->
     <div class="actions-bar">
       <button class="btn btn-ghost btn-sm" id="btnSound" onclick="toggleSound()">🔊 Звук: ВКЛ</button>
       <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
       <button class="btn btn-ghost btn-sm" data-role="btnCache" onclick="openAudioDebug()">🟥 Кэш</button>
       <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
     </div>
+    
+      <!-- Журнал ходов (сворачиваемый) -->
+      <details class="log-panel">
+        <summary>📋 ЖУРНАЛ ХОДОВ</summary>
+        <ul class="log-list" id="logList"></ul>
+      </details>
+    </div>
+
+
 
     <!-- Админ-панель -->
     <details class="admin-panel">
@@ -1408,6 +1447,7 @@
           <input type="password" id="adminPassword" placeholder="Пароль">
         </div>
         <button class="btn btn-danger btn-sm" onclick="restartGame()">🔄 Удалить комнату</button>
+        <button class="btn btn-ghost btn-sm" onclick="openAudioProb()">🎲 Вероятности звуков</button>
       </div>
     </details>
 
@@ -1446,7 +1486,7 @@ var LOBBY_INTERVAL = 10000; // мс — обновление списка ком
 // Пул рандомайзера: случайное число 0..(RANDOM_POOL_SIZE-1), затем % n → индекс файла.
 // makeFiles(10),  число 304 → 304%10=4  → 5.mp3
 // makeFiles(40),  число 304 → 304%40=24 → 25.mp3
-var RANDOM_POOL_SIZE = 500;
+var RANDOM_POOL_SIZE = 100;
 
 function makeFiles(n) {
   var arr = [];
@@ -1478,7 +1518,82 @@ var audioState = {
   currentAudio: null,
   lastPlayerShotAt: 0,
   preload: { started: false, done: false, total: 0, finished: 0, promise: null, currentSrc: null, phase: "" },
+  // Вероятности в рамках сессии/игры: на каждую категорию — 100 значений пула с весами.
+  // Изначально все веса = 1, после выпадения значения вес делится на 2 (1 → 0.5 → 0.25 ...).
+  rand: { poolSize: RANDOM_POOL_SIZE, byEvent: {} },
 };
+
+function getAudioRandStateForEvent(eventId, cfg) {
+  if (!audioState.rand) audioState.rand = { poolSize: RANDOM_POOL_SIZE, byEvent: {} };
+  if (audioState.rand.poolSize !== RANDOM_POOL_SIZE) {
+    audioState.rand.poolSize = RANDOM_POOL_SIZE;
+    audioState.rand.byEvent = {};
+  }
+  if (!audioState.rand.byEvent[eventId]) {
+    audioState.rand.byEvent[eventId] = {
+      weights: new Array(RANDOM_POOL_SIZE).fill(1),
+      rollCounts: new Array(RANDOM_POOL_SIZE).fill(0),
+      fileCounts: {},
+      plays: 0
+    };
+    if (cfg && cfg.files && cfg.files.length) {
+      for (var i = 0; i < cfg.files.length; i++) audioState.rand.byEvent[eventId].fileCounts[String(cfg.files[i])] = 0;
+    }
+  }
+  return audioState.rand.byEvent[eventId];
+}
+
+function audioRandStorageKey() {
+  return "mb_audio_rand_" + (state.roomId || "") + "_" + (state.playerId || "") + "_" + (state.mySlot || "");
+}
+
+function saveAudioRandToStorage() {
+  try {
+    if (!state || !state.roomId || !state.playerId || !state.mySlot) return;
+    if (!audioState || !audioState.rand) return;
+    // Сохраняем только нужное (веса/счётчики) — переживает F5
+    localStorage.setItem(audioRandStorageKey(), JSON.stringify({
+      poolSize: RANDOM_POOL_SIZE,
+      byEvent: audioState.rand.byEvent || {}
+    }));
+  } catch(e) {}
+}
+
+function restoreAudioRandFromStorage() {
+  try {
+    if (!state || !state.roomId || !state.playerId || !state.mySlot) return;
+    var raw = localStorage.getItem(audioRandStorageKey());
+    if (!raw) return;
+    var parsed = JSON.parse(raw);
+    if (!parsed || parsed.poolSize !== RANDOM_POOL_SIZE || !parsed.byEvent) return;
+    audioState.rand = { poolSize: RANDOM_POOL_SIZE, byEvent: parsed.byEvent || {} };
+  } catch(e) {}
+}
+
+function clearAudioRandFromStorage() {
+  try {
+    // удаляем по текущей сессии (если ключ сформировать нельзя — попробуем по сохранённым значениям)
+    if (state && state.roomId && state.playerId && state.mySlot) {
+      localStorage.removeItem(audioRandStorageKey());
+      return;
+    }
+    var pid = localStorage.getItem("mb_playerId");
+    var rid = localStorage.getItem("mb_roomId");
+    var slot = localStorage.getItem("mb_mySlot");
+    if (pid && rid && slot) localStorage.removeItem("mb_audio_rand_" + rid + "_" + pid + "_" + slot);
+  } catch(e) {}
+}
+
+function weightedPickIndex(weights) {
+  var total = 0;
+  for (var i = 0; i < weights.length; i++) total += weights[i];
+  var r = Math.random() * total;
+  for (var j = 0; j < weights.length; j++) {
+    r -= weights[j];
+    if (r <= 0) return j;
+  }
+  return weights.length - 1;
+}
 
 function setSoundEnabled(enabled) {
   audioState.enabled = !!enabled;
@@ -1891,9 +2006,19 @@ function playEventSound(id) {
   var cfg = getAudioEventConfig(id);
   if (!cfg || !cfg.folder || !cfg.files || !cfg.files.length) return;
 
-  var poolRoll = Math.floor(Math.random() * RANDOM_POOL_SIZE);
+  var rs = getAudioRandStateForEvent(id, cfg);
+  var poolRoll = weightedPickIndex(rs.weights); // 0..RANDOM_POOL_SIZE-1
+  rs.rollCounts[poolRoll] = (rs.rollCounts[poolRoll] || 0) + 1;
+  rs.weights[poolRoll] = (rs.weights[poolRoll] || 1) * 0.5; // 1 → 0.5 → 0.25 ...
+  rs.plays = (rs.plays || 0) + 1;
+
   var file = cfg.files[poolRoll % cfg.files.length];
+  var fileKey = String(file);
+  if (rs.fileCounts[fileKey] == null) rs.fileCounts[fileKey] = 0;
+  rs.fileCounts[fileKey] += 1;
   var src = cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "") + "/" + String(file);
+  // сохраняем изменившиеся веса/счётчики (переживает F5)
+  saveAudioRandToStorage();
 
   try {
     var a = audioState.cache[src];
@@ -1912,6 +2037,12 @@ function playEventSound(id) {
     try { a.currentTime = 0; } catch (e) {}
     a.play().catch(function(){});
   } catch (e) {}
+
+  // Если окно вероятностей открыто — обновим его "на лету"
+  try {
+    var overlay = document.getElementById("audioProbOverlay");
+    if (overlay && overlay.classList.contains("show")) renderAudioProbabilities();
+  } catch(e) {}
 }
 
 // ── ДИАГНОСТИКА АУДИО-КЭША ───────────────────────────────────
@@ -1987,6 +2118,84 @@ function openAudioDebug() {
 function closeAudioDebug() {
   document.getElementById("audioDebugOverlay").classList.remove("show");
   if (audioState._debugInterval) { clearInterval(audioState._debugInterval); audioState._debugInterval = null; }
+}
+
+function openAudioProb() {
+  var sel = document.getElementById("audioProbEventSelect");
+  var poolEl = document.getElementById("audioProbPoolSize");
+  if (poolEl) poolEl.textContent = String(RANDOM_POOL_SIZE);
+  if (sel) {
+    // наполняем список событий
+    var html = "";
+    for (var i = 0; i < AUDIO_EVENTS.length; i++) {
+      var cfg = AUDIO_EVENTS[i];
+      html += "<option value='" + cfg.id + "'>" + (cfg.label || cfg.id) + " (" + (cfg.files ? cfg.files.length : 0) + ")</option>";
+    }
+    sel.innerHTML = html;
+  }
+  document.getElementById("audioProbOverlay").classList.add("show");
+  renderAudioProbabilities();
+  audioState._probInterval = setInterval(function() { renderAudioProbabilities(); }, 400);
+}
+
+function closeAudioProb() {
+  document.getElementById("audioProbOverlay").classList.remove("show");
+  if (audioState._probInterval) { clearInterval(audioState._probInterval); audioState._probInterval = null; }
+}
+
+function renderAudioProbabilities() {
+  var sel = document.getElementById("audioProbEventSelect");
+  var tbody = document.getElementById("audioProbTableBody");
+  var meta = document.getElementById("audioProbEventMeta");
+  if (!sel || !tbody) return;
+
+  var eventId = sel.value || (AUDIO_EVENTS[0] ? AUDIO_EVENTS[0].id : "");
+  var cfg = getAudioEventConfig(eventId);
+  if (!cfg || !cfg.files || !cfg.files.length) { tbody.innerHTML = ""; if (meta) meta.textContent = ""; return; }
+
+  var rs = getAudioRandStateForEvent(eventId, cfg);
+  var n = cfg.files.length;
+
+  // суммируем веса по файлам через отображение i % n
+  var fileW = {};
+  for (var j = 0; j < n; j++) fileW[String(cfg.files[j])] = 0;
+  for (var k = 0; k < RANDOM_POOL_SIZE; k++) {
+    var file = String(cfg.files[k % n]);
+    fileW[file] = (fileW[file] || 0) + (rs.weights[k] || 0);
+  }
+
+  // рендер
+  var maxW = 0;
+  for (var m = 0; m < n; m++) {
+    var fn = String(cfg.files[m]);
+    if ((fileW[fn] || 0) > maxW) maxW = fileW[fn] || 0;
+  }
+
+  var rows = [];
+  for (var f = 0; f < n; f++) {
+    var fileName = String(cfg.files[f]);
+    var w = fileW[fileName] || 0;
+    // “вес 0..100”: у самых вероятных вес = 100, остальные пропорционально
+    var w100 = maxW > 0 ? Math.round((w / maxW) * 100) : 0;
+    var cnt = rs.fileCounts && rs.fileCounts[fileName] ? rs.fileCounts[fileName] : 0;
+    rows.push({ file: fileName, w100: w100, cnt: cnt });
+  }
+  rows.sort(function(a,b){ return b.w100 - a.w100; });
+
+  var html = "";
+  for (var r = 0; r < rows.length; r++) {
+    var item = rows[r];
+    html += "<tr>";
+    html += "<td style='color:rgba(168,228,255,0.85);'>" + item.file + "</td>";
+    html += "<td>";
+    html += "<span class='audio-debug-bar-wrap'><span class='audio-debug-bar partial' style='width:" + Math.min(100, Math.max(0, item.w100)) + "%'></span></span>";
+    html += "<span class='audio-debug-count' style='margin-left:6px;color:rgba(240,192,64,0.95);font-weight:700;'>" + item.w100 + "</span>";
+    html += "</td>";
+    html += "<td><span class='audio-debug-count ok'>" + item.cnt + "</span></td>";
+    html += "</tr>";
+  }
+  tbody.innerHTML = html;
+  if (meta) meta.textContent = "Срабатываний: " + (rs.plays || 0);
 }
 
 function reloadAudioCache() {
@@ -2094,6 +2303,8 @@ function loadSession() {
   return !!(state.playerId && state.nickname && state.roomId);
 }
 function clearSession() {
+  // Сбрасываем сохранённые вероятности звуков при выходе/смене комнаты
+  clearAudioRandFromStorage();
   ["mb_playerId","mb_nickname","mb_mySlot","mb_roomId"].forEach(function(k){ localStorage.removeItem(k); });
   state.playerId = null; state.nickname = null; state.mySlot = null; state.roomId = null;
   state.myBoard  = null;
@@ -2300,6 +2511,8 @@ async function enterGameScreen() {
   await ensureAudioReadyBeforeGame();
   showScreen("gameScreen");
   document.getElementById("waitingRoomCode").textContent = state.roomId || "—";
+  // Восстанавливаем вероятности звуков для этой комнаты/сессии (переживает F5)
+  restoreAudioRandFromStorage();
   buildGridLabels();
   buildGrids();
   restoreLog();
@@ -2397,7 +2610,11 @@ function buildGrid(gridId, isEnemy) {
       cell.dataset.x = c; cell.dataset.y = r;
       if (isEnemy) {
         (function(cx, cy) {
-          cell.addEventListener("click", function() { shoot(cx, cy); });
+          cell.addEventListener("click", function() {
+            // Стреляем только по реально разрешённым клеткам
+            if (!cell.classList.contains("shootable")) return;
+            shoot(cx, cy);
+          });
         })(c, r);
       }
       el.appendChild(cell);
@@ -2411,6 +2628,10 @@ async function shoot(x, y) {
   var gs = state.gameState;
   if (!gs || gs.phase !== "playing") return;
   if (gs.turn !== state.playerId) return;
+
+  // Доп. защита: даже если вызвали shoot() напрямую, стреляем только по shootable.
+  var targetCell = getEnemyCellElement(x, y);
+  if (!targetCell || !targetCell.classList.contains("shootable")) return;
 
   audioState.lastPlayerShotAt = Date.now();
   playEventSound("shoot");
@@ -2427,7 +2648,6 @@ async function shoot(x, y) {
   try {
     var apiPromise = apiPost({ action: "move", playerId: state.playerId, roomId: state.roomId, x: x, y: y });
     document.getElementById("shootingNoticeText").textContent = "ВЫСТРЕЛ!";
-    var targetCell = getEnemyCellElement(x, y);
     await animateProjectile(targetCell);
 
     document.getElementById("shootingNoticeText").textContent = "ОЖИДАНИЕ РЕЗУЛЬТАТА...";
