@@ -1366,7 +1366,10 @@
       <p>Код комнаты — поделитесь с другом:</p>
       <div class="room-code" id="waitingRoomCode">—</div>
     </div>
-
+    <div class="actions-bar">
+      <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
+      <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
+    </div>
     <!-- Игровые поля -->
     <div id="boardsBlock" style="display:none;">
       <div class="legend">
@@ -3863,6 +3866,7 @@ async function soloAITurn() {
     await sleepMs(SFX_DELAY + 1600);
     var gsF = soloMakeGS();
     state.gameState = gsF;
+    unlockInput();
     showWinner(gsF);
     return;
   }
@@ -3871,6 +3875,7 @@ async function soloAITurn() {
     // ИИ ходит снова, но с задержкой (ждём окончания звука SFX)
     await sleepMs(SFX_DELAY + 1700);
     await showPhaseAnnouncement("💥 КОМПЬЮТЕР ПОПАЛ! ЕЩЁ РАЗ!", "enemy");
+    unlockInput(); // Сбрасываем блокировку перед следующим ходом ИИ
     setTimeout(soloAITurn, 1600);
   } else {
     // Передаём ход игроку
@@ -3881,6 +3886,7 @@ async function soloAITurn() {
     if (wait > 0) await sleepMs(wait);
     switchView("enemy", true);
     updateTurnBadge(true, "КОМПЬЮТЕР");
+    unlockInput();
     setEnemyGridShootable(true);
     playEventSound("turnMine");
   }
