@@ -3781,7 +3781,7 @@ async function soloShoot(x, y) {
     updateTurnBadge(false, "КОМПЬЮТЕР");
     unlockInput();
     // ИИ ходит с задержкой — чтобы звуки не перекрывались
-    setTimeout(soloAITurn, 700);
+    setTimeout(soloAITurn, 1400);
   }
 }
 
@@ -3844,7 +3844,7 @@ async function soloAITurn() {
   addLog("Компьютер → " + COL_LABELS[x] + ROW_LABELS[y] + ": " + resText, result.type);
 
   // Задержка перед звуком результата, чтобы не перекрывал shoot
-  var SFX_DELAY = 500;
+  var SFX_DELAY = 1900;
   setTimeout(function() {
     if (result.type === "sunk")      playEventSound("sunkMe");
     else if (result.type === "hit")  playEventSound("hitMe");
