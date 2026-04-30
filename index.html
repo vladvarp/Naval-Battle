@@ -3781,6 +3781,7 @@ async function soloShoot(x, y) {
     updateTurnBadge(true, "КОМПЬЮТЕР");
   } else {
     await showPhaseAnnouncement("💦 ПРОМАХ! ХОД КОМПЬЮТЕРА", "enemy");
+    playEventSound("turnEnemy");
     solo.turn = "ai";
     var gs3 = soloMakeGS();
     state.gameState = gs3;
