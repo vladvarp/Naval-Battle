@@ -2041,6 +2041,7 @@ function renderRooms(rooms) {
     list.innerHTML = '<div class="rooms-empty"><span class="icon">🌊</span>Нет открытых комнат.<br>Создайте свою!</div>';
     return;
   }
+  rooms.sort(function(a, b) { return (a.idleSec || 0) - (b.idleSec || 0); });
   var html = "";
   rooms.forEach(function(r) {
     var idle = r.idleSec || 0;
