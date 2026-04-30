@@ -3073,12 +3073,13 @@ function renderFleetIndicators(gs) {
   // Флот противника: точные потопленные, остальные — эвристика по количеству попаданий
   var myShots = state.mySlot === 1 ? gs.shotsP1 : gs.shotsP2;
   var sunkLens = [];
-  var hitsCount = 0;
+  // ВАЖНО: по противнику мы не показываем "ранения" (hit), только точно известные sunk.
   if (myShots) {
     myShots.forEach(function(s) {
       if (!s) return;
-      if (s.result === "sunk" && s.sunkCells && s.sunkCells.length) sunkLens.push(s.sunkCells.length);
-      else if (s.result === "hit") hitsCount++;
+      if (s.result === "sunk" && s.sunkCells && s.sunkCells.length) {
+        sunkLens.push(s.sunkCells.length);
+      }
     });
   }
   sunkLens.sort(function(a, b){ return b - a; });
@@ -3099,12 +3100,7 @@ function renderFleetIndicators(gs) {
     if (sunkUsed[idx]) {
       enemySegments.push(new Array(L).fill("sunk"));
     } else {
-      var segs2 = [];
-      for (var k = 0; k < L; k++) {
-        if (hitsCount > 0) { segs2.push("hit"); hitsCount--; }
-        else segs2.push("ok");
-      }
-      enemySegments.push(segs2);
+      enemySegments.push(new Array(L).fill("ok"));
     }
   }
   renderFleetBar("enemyFleetIndicator", enemySegments, true);
