@@ -1361,15 +1361,19 @@
 
     <!-- Ожидание второго игрока -->
     <div id="waitingBlock" class="waiting-msg">
+
       <span class="icon">⚓</span>
+      <span class="icon"></span>
       <h3>ОЖИДАНИЕ ПРОТИВНИКА</h3>
       <p>Код комнаты — поделитесь с другом:</p>
       <div class="room-code" id="waitingRoomCode">—</div>
+      <div> </div>
+      <div class="actions-bar">
+        <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
+        <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
+      </div>
     </div>
-    <div class="actions-bar">
-      <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
-      <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
-    </div>
+
     <!-- Игровые поля -->
     <div id="boardsBlock" style="display:none;">
       <div class="legend">
