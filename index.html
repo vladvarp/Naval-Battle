@@ -1308,7 +1308,8 @@
       <div class="field-group">
         <label>ВАШЕ ИМЯ: <span id="lobbyNickname" style="color:var(--foam);"></span></label>
       </div>
-      <button class="btn btn-primary" onclick="createRoom()">⚓ СОЗДАТЬ НОВУЮ КОМНАТУ</button>
+      <button class="btn btn-primary" style="margin-bottom:10px;" onclick="startSoloGame()">🤖 ИГРАТЬ С КОМПЬЮТЕРОМ</button>
+      <button class="btn btn-ghost" onclick="createRoom()">⚓ СОЗДАТЬ ОНЛАЙН КОМНАТУ</button>
       <div id="createMsg"></div>
     </div>
 
@@ -1515,13 +1516,57 @@ var audioState = {
   volume: 0.75,
   unlocked: false,
   cache: {},
-  currentAudio: null,
+  // Очередь: звуки не глушат друг друга, а играют по очереди до конца
+  queue: [],
+  queuePlaying: false,
   lastPlayerShotAt: 0,
   preload: { started: false, done: false, total: 0, finished: 0, promise: null, currentSrc: null, phase: "" },
   // Вероятности в рамках сессии/игры: на каждую категорию — 100 значений пула с весами.
   // Изначально все веса = 1, после выпадения значения вес делится на 2 (1 → 0.5 → 0.25 ...).
   rand: { poolSize: RANDOM_POOL_SIZE, byEvent: {} },
 };
+
+function waitAudioEnded(a) {
+  return new Promise(function(resolve) {
+    if (!a) { resolve(); return; }
+    var done = false;
+    function finish() {
+      if (done) return;
+      done = true;
+      try { a.removeEventListener("ended", finish); } catch(e) {}
+      try { a.removeEventListener("error", finish); } catch(e) {}
+      resolve();
+    }
+    try { a.addEventListener("ended", finish, { once: true }); } catch(e) { a.onended = finish; }
+    try { a.addEventListener("error", finish, { once: true }); } catch(e) {}
+  });
+}
+
+async function pumpAudioQueue() {
+  if (audioState.queuePlaying) return;
+  audioState.queuePlaying = true;
+  try {
+    while (audioState.enabled && audioState.unlocked && audioState.queue && audioState.queue.length) {
+      var src = audioState.queue.shift();
+      if (!src) continue;
+      var a = audioState.cache[src];
+      if (!a) {
+        try {
+          a = new Audio(src);
+          a.preload = "auto";
+          a.load();
+          audioState.cache[src] = a;
+        } catch(e) { continue; }
+      }
+      try { a.volume = audioState.volume; } catch(e) {}
+      try { a.currentTime = 0; } catch (e) {}
+      try { await a.play(); } catch(e) {}
+      await waitAudioEnded(a);
+    }
+  } finally {
+    audioState.queuePlaying = false;
+  }
+}
 
 function getAudioRandStateForEvent(eventId, cfg) {
   if (!audioState.rand) audioState.rand = { poolSize: RANDOM_POOL_SIZE, byEvent: {} };
@@ -2020,23 +2065,11 @@ function playEventSound(id) {
   // сохраняем изменившиеся веса/счётчики (переживает F5)
   saveAudioRandToStorage();
 
+  // В очередь: доигрываем звуки до конца
   try {
-    var a = audioState.cache[src];
-    if (!a) {
-      a = new Audio(src);
-      a.preload = "auto";
-      a.load();
-      audioState.cache[src] = a;
-    }
-    // Один канал: не даём звукам наслаиваться друг на друга
-    if (audioState.currentAudio && audioState.currentAudio !== a) {
-      try { audioState.currentAudio.pause(); audioState.currentAudio.currentTime = 0; } catch (e) {}
-    }
-    audioState.currentAudio = a;
-    a.volume = audioState.volume;
-    try { a.currentTime = 0; } catch (e) {}
-    a.play().catch(function(){});
-  } catch (e) {}
+    audioState.queue.push(src);
+    pumpAudioQueue();
+  } catch(e) {}
 
   // Если окно вероятностей открыто — обновим его "на лету"
   try {
@@ -2201,7 +2234,8 @@ function renderAudioProbabilities() {
 function reloadAudioCache() {
   // Сбрасываем in-memory аудио и делаем полную перезапись Cache Storage
   audioState.cache = {};
-  audioState.currentAudio = null;
+  audioState.queue = [];
+  audioState.queuePlaying = false;
   audioState.preload = { started: false, done: false, total: 0, finished: 0, promise: null, currentSrc: null, phase: "" };
   renderAudioDebugTable();
   preloadAllAudioToCache({ overwrite: true, onlyMissing: false });
@@ -3005,10 +3039,10 @@ function processGameState(gs) {
       // Даём gameStart доиграть (~5 сек), потом звук хода
       var _isMyTurn = isMyTurn, _enemyName = enemyName;
       setTimeout(function() {
-        playEventSound(_isMyTurn ? "turnMine" : "turnEnemy");
+        if (_isMyTurn || !solo.active) playEventSound(_isMyTurn ? "turnMine" : "turnEnemy");
       }, 5000);
     } else {
-      playEventSound(isMyTurn ? "turnMine" : "turnEnemy");
+      if (isMyTurn || !solo.active) playEventSound(isMyTurn ? "turnMine" : "turnEnemy");
     }
     if (isMyTurn) {
       (async function() {
@@ -3445,6 +3479,564 @@ function renderFleetIndicators(gs) {
   renderFleetBar("enemyFleetIndicator", enemySegments, true);
 }
 
+// ═══════════════════════════════════════════════════════════════
+// РЕЖИМ ОДИНОЧНОЙ ИГРЫ (vs Компьютер)
+// ═══════════════════════════════════════════════════════════════
+
+var solo = {
+  active:   false,
+  myBoard:  null,  // 10x10: 0=вода,1=корабль
+  aiBoard:  null,  // 10x10: 0=вода,1=корабль (скрыто от игрока)
+  shotsP1:  [],    // выстрелы игрока
+  shotsP2:  [],    // выстрелы ИИ
+  turn:     "player", // "player"|"ai"
+  phase:    "playing",
+  winner:   null,
+  // ИИ-стратегия
+  ai: {
+    hitQueue: [],   // клетки рядом с попаданиями для добивания
+    tried:    {},   // ключи y_x уже проверенных клеток
+  }
+};
+
+// ── РАССТАНОВКА КОРАБЛЕЙ ──────────────────────────────────────
+function soloPlaceShips() {
+  var FLEET = [4,3,3,2,2,2,1,1,1,1];
+  var board = [];
+  for (var r = 0; r < 10; r++) { board.push([]); for (var c = 0; c < 10; c++) board[r].push(0); }
+
+  function canPlace(b, x, y, len, horiz) {
+    for (var i = 0; i < len; i++) {
+      var cx = x + (horiz ? i : 0), cy = y + (horiz ? 0 : i);
+      if (cx < 0 || cx > 9 || cy < 0 || cy > 9) return false;
+      // проверяем клетку и периметр
+      for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+        var nx = cx + dx, ny = cy + dy;
+        if (nx >= 0 && nx <= 9 && ny >= 0 && ny <= 9 && b[ny][nx] === 1) return false;
+      }
+    }
+    return true;
+  }
+
+  function place(b, x, y, len, horiz) {
+    for (var i = 0; i < len; i++) {
+      var cx = x + (horiz ? i : 0), cy = y + (horiz ? 0 : i);
+      b[cy][cx] = 1;
+    }
+  }
+
+  for (var s = 0; s < FLEET.length; s++) {
+    var len = FLEET[s];
+    var placed = false;
+    for (var attempt = 0; attempt < 1000 && !placed; attempt++) {
+      var horiz = Math.random() < 0.5;
+      var x = Math.floor(Math.random() * 10);
+      var y = Math.floor(Math.random() * 10);
+      if (canPlace(board, x, y, len, horiz)) {
+        place(board, x, y, len, horiz);
+        placed = true;
+      }
+    }
+  }
+  return board;
+}
+
+// ── ИНИЦИАЛИЗАЦИЯ СОЛО-ИГРЫ ───────────────────────────────────
+async function startSoloGame() {
+  if (!state.nickname) return;
+  stopLobbyPolling();
+
+  // Инициализируем состояние
+  solo.active  = true;
+  solo.myBoard = soloPlaceShips();
+  solo.aiBoard = soloPlaceShips();
+  solo.shotsP1 = [];
+  solo.shotsP2 = [];
+  solo.turn    = "player";
+  solo.phase   = "playing";
+  solo.winner  = null;
+  solo.ai      = { hitQueue: [], tried: {} };
+
+  // Инициализируем state для переиспользования UI
+  state.playerId  = "player";
+  state.mySlot    = 1;
+  state.roomId    = "solo";
+  state.myBoard   = solo.myBoard;
+  state.winnerShown = false;
+  // важно: не ставим сразу "enemy", иначе switchView() может выйти раньше и не переключить панели
+  state.currentView = "mine";
+  state.lastShot  = { my: null, enemy: null };
+  state.inputLocked = false;
+  state.enemyShotShowUntil = 0;
+
+  await ensureAudioReadyBeforeGame();
+  showScreen("gameScreen");
+  buildGridLabels();
+  buildGrids();
+  document.getElementById("waitingBlock").style.display = "none";
+  document.getElementById("boardsBlock").style.display  = "block";
+  document.getElementById("viewSwitcher").style.display = "flex";
+  document.getElementById("logList").innerHTML = "";
+
+  // Рендерим начальное состояние
+  var gs = soloMakeGS();
+  state.gameState = gs;
+  updateStatusBar(gs);
+  renderMyBoard(gs);
+  renderEnemyBoard(gs);
+  renderFleetIndicators(gs);
+  updateTurnBadge(true, "КОМПЬЮТЕР");
+  setEnemyGridShootable(true);
+  switchView("enemy", true);
+
+  playEventSound("gameStart");
+  var _nick = state.nickname;
+  setTimeout(function() { playEventSound("turnMine"); }, 5000);
+}
+
+// ── СИНТЕТИЧЕСКИЙ GAME STATE для UI ───────────────────────────
+function soloMakeGS() {
+  return {
+    ok: true,
+    phase:   solo.phase,
+    turn:    solo.turn === "player" ? "player" : "ai",
+    winner:  solo.winner,
+    players: [
+      { playerId: "player", nickname: state.nickname || "ВЫ" },
+      { playerId: "ai",     nickname: "Компьютер" }
+    ],
+    myBoard:  solo.myBoard,
+    shotsP1:  solo.shotsP1,
+    shotsP2:  solo.shotsP2,
+  };
+}
+
+// ── СОХРАНЕНИЕ / ВОССТАНОВЛЕНИЕ СОЛО-СЕССИИ ──────────────────
+function saveSoloSession() {
+  try {
+    localStorage.setItem("mb_solo_session", JSON.stringify({
+      myBoard:  solo.myBoard,
+      aiBoard:  solo.aiBoard,
+      shotsP1:  solo.shotsP1,
+      shotsP2:  solo.shotsP2,
+      turn:     solo.turn,
+      phase:    solo.phase,
+      winner:   solo.winner,
+      ai:       solo.ai,
+      nickname: state.nickname
+    }));
+  } catch(e) {}
+}
+
+function clearSoloSession() {
+  try { localStorage.removeItem("mb_solo_session"); } catch(e) {}
+}
+
+async function restoreSoloSession() {
+  var raw;
+  try { raw = localStorage.getItem("mb_solo_session"); } catch(e) {}
+  if (!raw) return false;
+  var s;
+  try { s = JSON.parse(raw); } catch(e) { return false; }
+  if (!s || !s.myBoard || !s.aiBoard) return false;
+
+  solo.active  = true;
+  solo.myBoard = s.myBoard;
+  solo.aiBoard = s.aiBoard;
+  solo.shotsP1 = s.shotsP1 || [];
+  solo.shotsP2 = s.shotsP2 || [];
+  solo.turn    = s.turn    || "player";
+  solo.phase   = s.phase   || "playing";
+  solo.winner  = s.winner  || null;
+  solo.ai      = s.ai      || { hitQueue: [], tried: {} };
+
+  state.nickname  = s.nickname || loadSavedNickname() || "Игрок";
+  state.playerId  = "player";
+  state.mySlot    = 1;
+  state.roomId    = "solo";
+  state.myBoard   = solo.myBoard;
+  state.winnerShown = false;
+  state.currentView = "mine";
+  state.lastShot  = { my: null, enemy: null };
+  state.inputLocked = false;
+  state.enemyShotShowUntil = 0;
+
+  await ensureAudioReadyBeforeGame();
+  showScreen("gameScreen");
+  buildGridLabels();
+  buildGrids();
+  document.getElementById("waitingBlock").style.display = "none";
+  document.getElementById("boardsBlock").style.display  = "block";
+  document.getElementById("viewSwitcher").style.display = "flex";
+
+  var gs = soloMakeGS();
+  state.gameState = gs;
+  updateStatusBar(gs);
+  renderMyBoard(gs);
+  renderEnemyBoard(gs);
+  renderFleetIndicators(gs);
+
+  if (solo.phase === "finished") {
+    showWinner(gs);
+  } else if (solo.turn === "player") {
+    updateTurnBadge(true, "КОМПЬЮТЕР");
+    setEnemyGridShootable(true);
+    switchView("enemy", true);
+  } else {
+    updateTurnBadge(false, "КОМПЬЮТЕР");
+    setEnemyGridShootable(false);
+    switchView("mine", true);
+    setTimeout(soloAITurn, 800);
+  }
+  renderFleetIndicators(gs);
+  return true;
+}
+
+// ── ПЕРЕХВАТ ВЫСТРЕЛА В СОЛО-РЕЖИМЕ ──────────────────────────
+// Переопределяем shoot() для соло — оборачиваем оригинальный
+var _originalShoot = null; // будет присвоен после определения shoot()
+
+async function soloShoot(x, y) {
+  if (state.inputLocked) return;
+  if (solo.phase !== "playing") return;
+  if (solo.turn !== "player") return;
+
+  var targetCell = getEnemyCellElement(x, y);
+  if (!targetCell || !targetCell.classList.contains("shootable")) return;
+
+  audioState.lastPlayerShotAt = Date.now();
+  playEventSound("shoot");
+
+  lockInput("ПРИЦЕЛИВАНИЕ...");
+  setEnemyGridShootable(false);
+
+  // Проверяем попадание по доске ИИ
+  var result = soloCheckHit(solo.aiBoard, solo.shotsP1, x, y);
+
+  state.lastShot.my = { x: x, y: y };
+  document.getElementById("shootingNoticeText").textContent = "ВЫСТРЕЛ!";
+  await animateProjectile(targetCell);
+
+  document.getElementById("shootingNoticeText").textContent = "РЕЗУЛЬТАТ...";
+  await sleepMs(80);
+
+  await playImpactEffect(targetCell, result.type);
+
+  // Добавляем выстрел в solo.shotsP1
+  var shotObj = { x: x, y: y, result: result.type };
+  if (result.type === "sunk") {
+    shotObj.sunkCells     = result.sunkCells;
+    shotObj.sunkPerimeter = result.sunkPerimeter;
+    // Помечаем клетки на доске ИИ как потопленные
+    result.sunkCells.forEach(function(c) { solo.aiBoard[c.y][c.x] = 2; });
+  }
+  solo.shotsP1.push(shotObj);
+  saveSoloSession();
+
+  // Звук результата
+  if (result.type === "sunk")      playEventSound("sunkEnemy");
+  else if (result.type === "hit")  playEventSound("hitEnemy");
+  else                             playEventSound("miss");
+
+  // Журнал
+  var rText = result.type === "hit" ? "Попадание!" : result.type === "sunk" ? "Потоплен!" : "Промах";
+  addLog("Вы → " + COL_LABELS[x] + ROW_LABELS[y] + ": " + rText, result.type);
+
+  // Рендер поля противника
+  var gsR = soloMakeGS();
+  state.gameState = gsR;
+  renderEnemyBoard(gsR);
+  renderFleetIndicators(gsR);
+
+  // Проверка победы
+  if (soloCountShipCells(solo.aiBoard) === 0) {
+    solo.phase  = "finished";
+    solo.winner = "player";
+    var gs = soloMakeGS();
+    state.gameState = gs;
+    renderEnemyBoard(gs);
+    renderFleetIndicators(gs);
+    unlockInput();
+    showWinner(gs);
+    return;
+  }
+
+  if (result.type === "hit" || result.type === "sunk") {
+    await showPhaseAnnouncement(result.type === "sunk" ? "💥 ПОТОПЛЕН! ЕЩЁ РАЗ!" : "🎯 ПОПАДАНИЕ! ЕЩЁ РАЗ!", "my");
+    var gs2 = soloMakeGS();
+    state.gameState = gs2;
+    renderEnemyBoard(gs2);
+    renderFleetIndicators(gs2);
+    unlockInput();
+    setEnemyGridShootable(true);
+    updateTurnBadge(true, "КОМПЬЮТЕР");
+  } else {
+    await showPhaseAnnouncement("💦 ПРОМАХ! ХОД КОМПЬЮТЕРА", "enemy");
+    solo.turn = "ai";
+    var gs3 = soloMakeGS();
+    state.gameState = gs3;
+    renderEnemyBoard(gs3);
+    renderFleetIndicators(gs3);
+    switchView("mine", true);
+    updateTurnBadge(false, "КОМПЬЮТЕР");
+    unlockInput();
+    // ИИ ходит с задержкой — чтобы звуки не перекрывались
+    setTimeout(soloAITurn, 700);
+  }
+}
+
+// ── ХОД ИИ ───────────────────────────────────────────────────
+async function soloAITurn() {
+  if (solo.phase !== "playing" || solo.turn !== "ai") return;
+
+  // ИИ выбирает клетку
+  var shot = soloAIPick();
+  if (!shot) return;
+
+  var x = shot.x, y = shot.y;
+  solo.ai.tried[y + "_" + x] = true;
+
+  var result = soloCheckHit(solo.myBoard, solo.shotsP2, x, y);
+  var es = { x: x, y: y, result: result.type };
+  if (result.type === "sunk") {
+    es.sunkCells     = result.sunkCells;
+    es.sunkPerimeter = result.sunkPerimeter;
+    result.sunkCells.forEach(function(c) { solo.myBoard[c.y][c.x] = 2; });
+    // Помечаем периметр как отработанный
+    result.sunkPerimeter.forEach(function(c) { solo.ai.tried[c.y + "_" + c.x] = true; });
+    // Очищаем очередь добивания — корабль уже потоплен
+    solo.ai.hitQueue = solo.ai.hitQueue.filter(function(q) {
+      return !result.sunkCells.some(function(sc){ return sc.x === q.x && sc.y === q.y; });
+    });
+  } else if (result.type === "hit") {
+    // Добавляем соседей в очередь
+    [[0,-1],[0,1],[-1,0],[1,0]].forEach(function(d) {
+      var nx = x + d[0], ny = y + d[1];
+      if (nx >= 0 && nx <= 9 && ny >= 0 && ny <= 9 && !solo.ai.tried[ny + "_" + nx]) {
+        // Если уже есть хиты — добавляем только по оси
+        solo.ai.hitQueue.push({ x: nx, y: ny });
+      }
+    });
+  }
+
+  // Показываем эффект на нашем поле
+  state.lastShot.enemy = { x: x, y: y };
+  state.enemyShotShowUntil = Date.now() + 1400;
+  if (state.currentView !== "mine") switchView("mine", true);
+
+  var myCell = getMyCellElement(x, y);
+
+  // Звук выстрела ИИ не воспроизводится (только для игрока)
+
+  await sleepMs(300);
+  await playIncomingImpactEffect(myCell, result.type);
+
+  // Обновляем shotsP2 и рендерим
+  var shotObjForGs = { x: x, y: y, result: result.type };
+  if (result.type === "sunk") {
+    shotObjForGs.sunkCells     = result.sunkCells;
+    shotObjForGs.sunkPerimeter = result.sunkPerimeter;
+  }
+  solo.shotsP2.push(shotObjForGs);
+  saveSoloSession();
+
+  var resText = result.type === "hit" ? "Попадание!" : result.type === "sunk" ? "Потопил!" : "Промах";
+  addLog("Компьютер → " + COL_LABELS[x] + ROW_LABELS[y] + ": " + resText, result.type);
+
+  // Задержка перед звуком результата, чтобы не перекрывал shoot
+  var SFX_DELAY = 500;
+  setTimeout(function() {
+    if (result.type === "sunk")      playEventSound("sunkMe");
+    else if (result.type === "hit")  playEventSound("hitMe");
+    else                             playEventSound("enemyMiss");
+  }, SFX_DELAY);
+
+  var gs = soloMakeGS();
+  state.gameState = gs;
+  renderMyBoard(gs);
+  renderFleetIndicators(gs);
+
+  // Проверка победы ИИ
+  if (soloCountShipCells(solo.myBoard) === 0) {
+    solo.phase  = "finished";
+    solo.winner = "ai";
+    await sleepMs(SFX_DELAY + 1600);
+    var gsF = soloMakeGS();
+    state.gameState = gsF;
+    showWinner(gsF);
+    return;
+  }
+
+  if (result.type === "hit" || result.type === "sunk") {
+    // ИИ ходит снова, но с задержкой (ждём окончания звука SFX)
+    await sleepMs(SFX_DELAY + 1700);
+    await showPhaseAnnouncement("💥 КОМПЬЮТЕР ПОПАЛ! ЕЩЁ РАЗ!", "enemy");
+    setTimeout(soloAITurn, 1600);
+  } else {
+    // Передаём ход игроку
+    await sleepMs(SFX_DELAY + 1400);
+    solo.turn = "player";
+    await showPhaseAnnouncement("⚡ ВАШ ХОД!", "my");
+    var wait = state.enemyShotShowUntil ? (state.enemyShotShowUntil - Date.now()) : 0;
+    if (wait > 0) await sleepMs(wait);
+    switchView("enemy", true);
+    updateTurnBadge(true, "КОМПЬЮТЕР");
+    setEnemyGridShootable(true);
+    playEventSound("turnMine");
+  }
+}
+
+// ── ИИ: ВЫБОР КЛЕТКИ ─────────────────────────────────────────
+function soloAIPick() {
+  // Сначала добивание из очереди
+  while (solo.ai.hitQueue.length > 0) {
+    var cand = solo.ai.hitQueue.shift();
+    var k = cand.y + "_" + cand.x;
+    if (!solo.ai.tried[k]) return cand;
+  }
+  // Шахматный паттерн (четные диагонали сначала)
+  var candidates = [];
+  for (var y = 0; y < 10; y++) for (var x = 0; x < 10; x++) {
+    if (!solo.ai.tried[y + "_" + x]) {
+      if ((x + y) % 2 === 0) candidates.push({ x: x, y: y, prio: 1 });
+      else candidates.push({ x: x, y: y, prio: 0 });
+    }
+  }
+  candidates.sort(function(a, b) { return b.prio - a.prio; });
+  if (!candidates.length) return null;
+  // Из приоритетных берём случайный
+  var topPrio = candidates[0].prio;
+  var top = candidates.filter(function(c){ return c.prio === topPrio; });
+  return top[Math.floor(Math.random() * top.length)];
+}
+
+// ── ПРОВЕРКА ПОПАДАНИЯ (общая для обоих) ─────────────────────
+// Только возвращает результат, НЕ пушит в shots (вызывающий сам добавляет)
+function soloCheckHit(board, shots, x, y) {
+  if (board[y][x] === 1) {
+    // Попадание — проверяем, потоплен ли корабль
+    var shipCells = soloFindShip(board, x, y);
+    // Все ли клетки корабля уже поражены (учитывая текущий выстрел)
+    var hitSet = {};
+    shots.forEach(function(s) {
+      if (s.result === "hit" || s.result === "sunk") {
+        hitSet[s.y + "_" + s.x] = true;
+        if (s.sunkCells) s.sunkCells.forEach(function(c){ hitSet[c.y+"_"+c.x]=true; });
+      }
+    });
+    hitSet[y + "_" + x] = true;
+
+    var allHit = shipCells.every(function(c) { return hitSet[c.y + "_" + c.x]; });
+    if (allHit) {
+      var perimeter = soloShipPerimeter(board, shipCells, shots, x, y);
+      return { type: "sunk", sunkCells: shipCells, sunkPerimeter: perimeter };
+    } else {
+      return { type: "hit" };
+    }
+  } else {
+    return { type: "miss" };
+  }
+}
+
+function soloFindShip(board, sx, sy) {
+  var cells = [];
+  var visited = {};
+  var queue = [[sx, sy]];
+  visited[sy + "_" + sx] = true;
+  while (queue.length) {
+    var cur = queue.shift();
+    var cx = cur[0], cy = cur[1];
+    cells.push({ x: cx, y: cy });
+    [[0,-1],[0,1],[-1,0],[1,0]].forEach(function(d) {
+      var nx = cx + d[0], ny = cy + d[1];
+      if (nx >= 0 && nx <= 9 && ny >= 0 && ny <= 9 && !visited[ny + "_" + nx] && (board[ny][nx] === 1 || board[ny][nx] === 2)) {
+        visited[ny + "_" + nx] = true;
+        queue.push([nx, ny]);
+      }
+    });
+  }
+  return cells;
+}
+
+function soloShipPerimeter(board, shipCells, shots, currentX, currentY) {
+  var shipSet = {};
+  shipCells.forEach(function(c) { shipSet[c.y + "_" + c.x] = true; });
+  var shotSet = {};
+  shots.forEach(function(s) { shotSet[s.y + "_" + s.x] = true; });
+  shotSet[currentY + "_" + currentX] = true;
+
+  var perim = [];
+  var seen = {};
+  shipCells.forEach(function(c) {
+    for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+      var nx = c.x + dx, ny = c.y + dy;
+      var k = ny + "_" + nx;
+      if (nx >= 0 && nx <= 9 && ny >= 0 && ny <= 9 && !shipSet[k] && !seen[k]) {
+        seen[k] = true;
+        if (!shotSet[k]) perim.push({ x: nx, y: ny });
+      }
+    }
+  });
+  return perim;
+}
+
+function soloCountShipCells(board) {
+  var count = 0;
+  for (var y = 0; y < 10; y++) for (var x = 0; x < 10; x++) if (board[y][x] === 1) count++;
+  return count;
+}
+
+// ── ПАТЧ: перехватываем shoot() в соло-режиме ────────────────
+// Сохраняем ссылку после определения оригинальной функции — патчим ниже в init
+
+// ── ВЫХОД ИЗ СОЛО-ИГРЫ ───────────────────────────────────────
+function leaveSoloGame() {
+  clearSoloSession();
+  solo.active  = false;
+  solo.phase   = "idle";
+  state.winnerShown = false;
+  state.inputLocked = false;
+  unlockInput();
+  document.getElementById("winnerOverlay").classList.remove("show");
+  document.getElementById("logList").innerHTML = "";
+  state.nickname = loadSavedNickname();
+  document.getElementById("lobbyNickname").textContent = state.nickname || "";
+  document.getElementById("createMsg").innerHTML = "";
+  showScreen("lobbyScreen");
+  startLobbyPolling();
+}
+
+// ── ПАТЧ leaveGame для соло ───────────────────────────────────
+// Патчим shoot и leaveGame после их определения
+
+(function patchForSolo() {
+  var _origShoot = shoot;
+  shoot = function(x, y) {
+    if (solo.active) return soloShoot(x, y);
+    return _origShoot(x, y);
+  };
+
+  var _origLeave = leaveGame;
+  leaveGame = function() {
+    if (solo.active) return leaveSoloGame();
+    return _origLeave();
+  };
+
+  var _origShowWinner = showWinner;
+  showWinner = function(gs) {
+    if (solo.active) {
+      var overlay      = document.getElementById("winnerOverlay");
+      var isMe         = gs.winner === "player";
+      document.getElementById("winnerName").textContent = isMe ? "ВЫ ПОБЕДИЛИ!" : "КОМПЬЮТЕР ПОБЕДИЛ";
+      document.getElementById("winnerMsg").textContent  = isMe ? "Все корабли компьютера потоплены!" : "Все ваши корабли потоплены";
+      overlay.classList.add("show");
+      playEventSound(isMe ? "gameWin" : "gameLose");
+      return;
+    }
+    return _origShowWinner(gs);
+  };
+})();
+
 // ── ИНИЦИАЛИЗАЦИЯ ─────────────────────────────────────────────
 (async function init() {
   window.addEventListener("resize", function() {
@@ -3470,6 +4062,7 @@ function renderFleetIndicators(gs) {
   if (savedNick) document.getElementById("inNickname").value = savedNick;
 
   // Пробуем восстановить сессию
+  if (await restoreSoloSession()) return;
   if (loadSession()) {
     await enterGameScreen();
     return;
