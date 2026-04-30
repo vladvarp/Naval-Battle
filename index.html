@@ -3561,6 +3561,8 @@ async function startSoloGame() {
 
   // Инициализируем состояние
   solo.active  = true;
+  state.inputLocked = false;   // ← добавить
+  unlockInput();               // ← добавить
   solo.myBoard = soloPlaceShips();
   solo.aiBoard = soloPlaceShips();
   solo.shotsP1 = [];
@@ -3654,6 +3656,8 @@ async function restoreSoloSession() {
   if (!s || !s.myBoard || !s.aiBoard) return false;
 
   solo.active  = true;
+  state.inputLocked = false;   // ← добавить
+  unlockInput();               // ← добавить
   solo.myBoard = s.myBoard;
   solo.aiBoard = s.aiBoard;
   solo.shotsP1 = s.shotsP1 || [];
@@ -3711,91 +3715,93 @@ var _originalShoot = null; // будет присвоен после опред�
 
 async function soloShoot(x, y) {
   if (state.inputLocked) return;
-  if (solo.phase !== "playing") return;
-  if (solo.turn !== "player") return;
+  if (solo.phase !== "playing" || solo.turn !== "player") return;
 
   var targetCell = getEnemyCellElement(x, y);
   if (!targetCell || !targetCell.classList.contains("shootable")) return;
+
+  // Защита от двойных кликов
+  if (Date.now() - (audioState.lastPlayerShotAt || 0) < 800) return;
 
   audioState.lastPlayerShotAt = Date.now();
   playEventSound("shoot");
 
   lockInput("ПРИЦЕЛИВАНИЕ...");
-  setEnemyGridShootable(false);
 
-  // Проверяем попадание по доске ИИ
-  var result = soloCheckHit(solo.aiBoard, solo.shotsP1, x, y);
+  try {
+    setEnemyGridShootable(false);
+    state.lastShot.my = { x: x, y: y };
 
-  state.lastShot.my = { x: x, y: y };
-  document.getElementById("shootingNoticeText").textContent = "ВЫСТРЕЛ!";
-  await animateProjectile(targetCell);
+    document.getElementById("shootingNoticeText").textContent = "ВЫСТРЕЛ!";
+    await animateProjectile(targetCell);
 
-  document.getElementById("shootingNoticeText").textContent = "РЕЗУЛЬТАТ...";
-  await sleepMs(80);
+    document.getElementById("shootingNoticeText").textContent = "РЕЗУЛЬТАТ...";
+    await sleepMs(80);
 
-  await playImpactEffect(targetCell, result.type);
+    var result = soloCheckHit(solo.aiBoard, solo.shotsP1, x, y);
+    await playImpactEffect(targetCell, result.type);
 
-  // Добавляем выстрел в solo.shotsP1
-  var shotObj = { x: x, y: y, result: result.type };
-  if (result.type === "sunk") {
-    shotObj.sunkCells     = result.sunkCells;
-    shotObj.sunkPerimeter = result.sunkPerimeter;
-    // Помечаем клетки на доске ИИ как потопленные
-    result.sunkCells.forEach(function(c) { solo.aiBoard[c.y][c.x] = 2; });
-  }
-  solo.shotsP1.push(shotObj);
-  saveSoloSession();
+    // Добавляем выстрел
+    var shotObj = { x: x, y: y, result: result.type };
+    if (result.type === "sunk") {
+      shotObj.sunkCells     = result.sunkCells;
+      shotObj.sunkPerimeter = result.sunkPerimeter;
+      result.sunkCells.forEach(function(c) { 
+        if (solo.aiBoard[c.y] && solo.aiBoard[c.y][c.x] !== undefined) 
+          solo.aiBoard[c.y][c.x] = 2; 
+      });
+    }
+    solo.shotsP1.push(shotObj);
+    saveSoloSession();
 
-  // Звук результата
-  if (result.type === "sunk")      playEventSound("sunkEnemy");
-  else if (result.type === "hit")  playEventSound("hitEnemy");
-  else                             playEventSound("miss");
+    // Звуки
+    if (result.type === "sunk")      playEventSound("sunkEnemy");
+    else if (result.type === "hit")  playEventSound("hitEnemy");
+    else                             playEventSound("miss");
 
-  // Журнал
-  var rText = result.type === "hit" ? "Попадание!" : result.type === "sunk" ? "Потоплен!" : "Промах";
-  addLog("Вы → " + COL_LABELS[x] + ROW_LABELS[y] + ": " + rText, result.type);
+    var rText = result.type === "hit" ? "Попадание!" : result.type === "sunk" ? "Потоплен!" : "Промах";
+    addLog("Вы → " + COL_LABELS[x] + ROW_LABELS[y] + ": " + rText, result.type);
 
-  // Рендер поля противника
-  var gsR = soloMakeGS();
-  state.gameState = gsR;
-  renderEnemyBoard(gsR);
-  renderFleetIndicators(gsR);
+    var gsR = soloMakeGS();
+    state.gameState = gsR;
+    renderEnemyBoard(gsR);
+    renderFleetIndicators(gsR);
 
-  // Проверка победы
-  if (soloCountShipCells(solo.aiBoard) === 0) {
-    solo.phase  = "finished";
-    solo.winner = "player";
-    var gs = soloMakeGS();
-    state.gameState = gs;
-    renderEnemyBoard(gs);
-    renderFleetIndicators(gs);
+    // Проверка победы
+    if (soloCountShipCells(solo.aiBoard) === 0) {
+      solo.phase  = "finished";
+      solo.winner = "player";
+      var gs = soloMakeGS();
+      state.gameState = gs;
+      showWinner(gs);
+      return;
+    }
+
+    if (result.type === "hit" || result.type === "sunk") {
+      await showPhaseAnnouncement(result.type === "sunk" ? "💥 ПОТОПЛЕН! ЕЩЁ РАЗ!" : "🎯 ПОПАДАНИЕ! ЕЩЁ РАЗ!", "my");
+      setEnemyGridShootable(true);
+      updateTurnBadge(true, "КОМПЬЮТЕР");
+    } else {
+      await showPhaseAnnouncement("💦 ПРОМАХ! ХОД КОМПЬЮТЕРА", "enemy");
+      playEventSound("turnEnemy");           // ← звук хода компьютера
+      solo.turn = "ai";
+      var gs3 = soloMakeGS();
+      state.gameState = gs3;
+      renderEnemyBoard(gs3);
+      renderFleetIndicators(gs3);
+      switchView("mine", true);
+      updateTurnBadge(false, "КОМПЬЮТЕР");
+      setTimeout(soloAITurn, 1100);
+    }
+  } catch (e) {
+    console.error("Ошибка в soloShoot:", e);
+    addLog("Ошибка выстрела", "miss");
+  } finally {
     unlockInput();
-    showWinner(gs);
-    return;
-  }
-
-  if (result.type === "hit" || result.type === "sunk") {
-    await showPhaseAnnouncement(result.type === "sunk" ? "💥 ПОТОПЛЕН! ЕЩЁ РАЗ!" : "🎯 ПОПАДАНИЕ! ЕЩЁ РАЗ!", "my");
-    var gs2 = soloMakeGS();
-    state.gameState = gs2;
-    renderEnemyBoard(gs2);
-    renderFleetIndicators(gs2);
-    unlockInput();
-    setEnemyGridShootable(true);
-    updateTurnBadge(true, "КОМПЬЮТЕР");
-  } else {
-    await showPhaseAnnouncement("💦 ПРОМАХ! ХОД КОМПЬЮТЕРА", "enemy");
-    playEventSound("turnEnemy");
-    solo.turn = "ai";
-    var gs3 = soloMakeGS();
-    state.gameState = gs3;
-    renderEnemyBoard(gs3);
-    renderFleetIndicators(gs3);
-    switchView("mine", true);
-    updateTurnBadge(false, "КОМПЬЮТЕР");
-    unlockInput();
-    // ИИ ходит с задержкой — чтобы звуки не перекрывались
-    setTimeout(soloAITurn, 1400);
+    // Восстанавливаем возможность стрельбы, если ход всё ещё наш
+    if (solo.phase === "playing" && solo.turn === "player") {
+      setEnemyGridShootable(true);
+    }
   }
 }
 
