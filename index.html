@@ -2657,20 +2657,32 @@ function buildGrids() {
 function buildGrid(gridId, isEnemy) {
   var el = document.getElementById(gridId);
   el.innerHTML = "";
+  
   for (var r = 0; r < 10; r++) {
     for (var c = 0; c < 10; c++) {
       var cell = document.createElement("div");
       cell.className = "cell" + (isEnemy ? " enemy-cell" : "");
-      cell.dataset.x = c; cell.dataset.y = r;
+      cell.dataset.x = c; 
+      cell.dataset.y = r;
+
       if (isEnemy) {
         (function(cx, cy) {
-          cell.addEventListener("click", function() {
-            // Стреляем только по реально разрешённым клеткам
+          cell.addEventListener("click", function(e) {
+            e.stopImmediatePropagation();   // Защита от повторных срабатываний
+            
+            // Стреляем только по разрешённым клеткам
             if (!cell.classList.contains("shootable")) return;
-            shoot(cx, cy);
+
+            // ←←← ВАЖНО: поддержка соло-режима
+            if (solo && solo.active) {
+              soloShoot(cx, cy);
+            } else {
+              shoot(cx, cy);
+            }
           });
         })(c, r);
       }
+      
       el.appendChild(cell);
     }
   }
@@ -3658,13 +3670,16 @@ async function restoreSoloSession() {
   var raw;
   try { raw = localStorage.getItem("mb_solo_session"); } catch(e) {}
   if (!raw) return false;
+
   var s;
   try { s = JSON.parse(raw); } catch(e) { return false; }
   if (!s || !s.myBoard || !s.aiBoard) return false;
 
+  // ── ЖЁСТКИЙ СБРОС ВСЕГО ─────────────────────────────────────
   solo.active  = true;
-  state.inputLocked = false;   // ← добавить
-  unlockInput();               // ← добавить
+  state.inputLocked = false;
+  unlockInput();
+
   solo.myBoard = s.myBoard;
   solo.aiBoard = s.aiBoard;
   solo.shotsP1 = s.shotsP1 || [];
@@ -3682,37 +3697,42 @@ async function restoreSoloSession() {
   state.winnerShown = false;
   state.currentView = "mine";
   state.lastShot  = { my: null, enemy: null };
-  state.inputLocked = false;
   state.enemyShotShowUntil = 0;
 
   await ensureAudioReadyBeforeGame();
   showScreen("gameScreen");
+
   buildGridLabels();
-  buildGrids();
+  buildGrids();                    // ← пересоздаём клетки + listeners
+
   document.getElementById("waitingBlock").style.display = "none";
   document.getElementById("boardsBlock").style.display  = "block";
   document.getElementById("viewSwitcher").style.display = "flex";
 
   var gs = soloMakeGS();
   state.gameState = gs;
+
   updateStatusBar(gs);
   renderMyBoard(gs);
   renderEnemyBoard(gs);
   renderFleetIndicators(gs);
 
+  // ── ГАРАНТИРОВАННАЯ РАЗБЛОКИРОВКА И СИНХРОНИЗАЦИЯ ───────────
   if (solo.phase === "finished") {
     showWinner(gs);
   } else if (solo.turn === "player") {
-    updateTurnBadge(true, "КОМПЬЮТЕР");
     setEnemyGridShootable(true);
     switchView("enemy", true);
+    updateTurnBadge(true, "КОМПЬЮТЕР");
   } else {
-    updateTurnBadge(false, "КОМПЬЮТЕР");
     setEnemyGridShootable(false);
     switchView("mine", true);
-    setTimeout(soloAITurn, 800);
+    updateTurnBadge(false, "КОМПЬЮТЕР");
+    // Защита от повторного выстрела ИИ при восстановлении
+    setTimeout(soloAITurn, 1200);
   }
-  renderFleetIndicators(gs);
+
+  console.log("✅ Solo-сессия успешно восстановлена");
   return true;
 }
 
