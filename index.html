@@ -1603,6 +1603,9 @@ function getAudioRandStateForEvent(eventId, cfg) {
 }
 
 function audioRandStorageKey() {
+  if (solo && solo.active) {
+    return "mb_solo_audio_rand";           // стабильный ключ для соло
+  }
   return "mb_audio_rand_" + (state.roomId || "") + "_" + (state.playerId || "") + "_" + (state.mySlot || "");
 }
 
@@ -3294,7 +3297,13 @@ function addLog(text, type) {
   li.innerHTML = '<span class="ts">' + ts + '</span>' + text;
   list.insertBefore(li, list.firstChild);
   while (list.children.length > 50) list.removeChild(list.lastChild);
-  saveLog();
+  
+  // Сохраняем лог в зависимости от режима
+  if (solo && solo.active) {
+    saveSoloLog();
+  } else {
+    saveLog();
+  }
 }
 
 function saveLog() {
@@ -3322,6 +3331,38 @@ function restoreLog() {
       list.appendChild(li);
     });
   } catch(e) {}
+}
+
+// ── СОХРАНЕНИЕ ЛОГА ДЛЯ СОЛО-РЕЖИМА ─────────────────────────────
+function saveSoloLog() {
+  try {
+    var list = document.getElementById("logList");
+    var items = [];
+    list.querySelectorAll("li").forEach(function(li) {
+      items.push({ html: li.innerHTML, cls: li.className });
+    });
+    localStorage.setItem("mb_solo_log", JSON.stringify(items));
+  } catch(e) {}
+}
+
+function restoreSoloLog() {
+  try {
+    var raw = localStorage.getItem("mb_solo_log");
+    if (!raw) return;
+    var items = JSON.parse(raw);
+    var list = document.getElementById("logList");
+    list.innerHTML = "";
+    items.forEach(function(item) {
+      var li = document.createElement("li");
+      li.className = item.cls;
+      li.innerHTML = item.html;
+      list.appendChild(li);
+    });
+  } catch(e) {}
+}
+
+function clearSoloLog() {
+  try { localStorage.removeItem("mb_solo_log"); } catch(e) {}
 }
 
 function clearSavedLog() {
@@ -3625,7 +3666,7 @@ async function startSoloGame() {
   document.getElementById("boardsBlock").style.display  = "block";
   document.getElementById("viewSwitcher").style.display = "flex";
   document.getElementById("logList").innerHTML = "";
-
+  clearSoloLog();                    // новый старт — чистим лог
   // Рендерим начальное состояние
   var gs = soloMakeGS();
   state.gameState = gs;
@@ -3717,7 +3758,9 @@ async function restoreSoloSession() {
   showScreen("gameScreen");
 
   buildGridLabels();
-  buildGrids();                    // ← пересоздаём клетки + listeners
+  buildGrids();
+  restoreSoloLog();
+  restoreAudioRandFromStorage();                    // ← пересоздаём клетки + listeners
 
   document.getElementById("waitingBlock").style.display = "none";
   document.getElementById("boardsBlock").style.display  = "block";
@@ -4055,6 +4098,7 @@ function soloCountShipCells(board) {
 
 // ── ВЫХОД ИЗ СОЛО-ИГРЫ ───────────────────────────────────────
 function leaveSoloGame() {
+  clearSoloLog();
   clearSoloSession();
   solo.active  = false;
   solo.phase   = "idle";
