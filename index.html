@@ -1429,24 +1429,31 @@
         <div class="status-label">ВЫ</div>
         <div class="status-value" id="statusMe">—</div>
       </div>
-      <div class="status-item">
+
+      <div class="status-item"">
         <div class="status-label">ХОД</div>
         <div class="status-value" id="statusTurn">—</div>
       </div>
+
       <div class="status-item">
         <div class="status-label">ПРОТИВНИК</div>
         <div class="status-value" id="statusEnemy">Ожидание...</div>
       </div>
-      <!-- 
-      <div class="status-item">
+
+      <div class="status-item" style="display: none;">
         <div class="status-label">ФАЗА</div>
         <div class="status-phase">
           <div class="phase-dot waiting" id="phaseDot"></div>
           <div class="status-value" id="statusPhase">Ожидание</div>
         </div>
       </div>
-      -->
 
+
+    </div>
+
+    <!-- Баннер хода -->
+    <div class="turn-banner" style="display: none;">
+      <span class="turn-badge" id="turnBadge"></span>
     </div>
 
     <!-- Ожидание второго игрока -->
@@ -1467,6 +1474,19 @@
     <!-- Игровые поля -->
     <div id="boardsBlock" style="display:none;">
 
+      <!-- Ручной переключатель полей -->
+      <div class="view-switcher" id="viewSwitcher">
+        <span class="view-switcher-label" style="display: none;">ПОКАЗАТЬ:</span>
+        <button class="btn-view active-mine" id="btnViewMine" onclick="manualSwitchView('mine')">
+          <span>⚓ МОЁ ПОЛЕ</span>
+          <div class="fleet-indicator in-btn" id="myFleetIndicator"></div>
+        </button>
+        <button class="btn-view" id="btnViewEnemy" onclick="manualSwitchView('enemy')">
+          <span>🎯 ПОЛЕ ПРОТИВНИКА</span>
+          <div class="fleet-indicator in-btn" id="enemyFleetIndicator"></div>
+        </button>
+      </div>
+
       <!-- Шкала вероятности победы -->
       <div class="win-prob-bar-wrap" id="winProbBar">
         <div class="win-prob-labels">
@@ -1486,23 +1506,8 @@
         </div>
         <div class="win-prob-title">ВЕРОЯТНОСТЬ ПОБЕДЫ</div>
       </div>
+      
 
-      <!-- Баннер хода -->
-      <div class="">
-        <span class="turn-badge" id="turnBadge"></span>
-      </div>
-
-      <!-- Ручной переключатель полей -->
-      <div class="view-switcher" id="viewSwitcher">
-        <button class="btn-view active-mine" id="btnViewMine" onclick="manualSwitchView('mine')">
-          <span>⚓ МОЁ ПОЛЕ</span>
-          <div class="fleet-indicator in-btn" id="myFleetIndicator"></div>
-        </button>
-        <button class="btn-view" id="btnViewEnemy" onclick="manualSwitchView('enemy')">
-          <span>🎯 ПОЛЕ ПРОТИВНИКА</span>
-          <div class="fleet-indicator in-btn" id="enemyFleetIndicator"></div>
-        </button>
-      </div>
 
       <!-- Арена: одно поле за раз -->
       <div class="arena">
@@ -3324,6 +3329,11 @@ function updateStatusBar(gs) {
   var enemy = gs.players ? gs.players.filter(function(p){ return p.playerId !== state.playerId; })[0] : null;
   document.getElementById("statusMe").textContent    = state.nickname || "—";
   document.getElementById("statusEnemy").textContent = enemy ? enemy.nickname : "Ожидание...";
+
+  var phaseMap = { waiting: "Ожидание", playing: "Игра", finished: "Конец" };
+  var dot = document.getElementById("phaseDot");
+  dot.className = "phase-dot " + (gs.phase || "waiting");
+  document.getElementById("statusPhase").textContent = phaseMap[gs.phase] || gs.phase;
 
   var turnPlayer = gs.players ? gs.players.filter(function(p){ return p.playerId === gs.turn; })[0] : null;
   var turnEl = document.getElementById("statusTurn");
