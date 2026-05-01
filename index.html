@@ -2652,6 +2652,7 @@ function buildGridLabels() {
 function buildGrids() {
   buildGrid("myGrid", false);
   buildGrid("enemyGrid", true);
+  setupEnemyGridClickHandler();        // ←←← обязательно
 }
 
 function buildGrid(gridId, isEnemy) {
@@ -2662,30 +2663,43 @@ function buildGrid(gridId, isEnemy) {
     for (var c = 0; c < 10; c++) {
       var cell = document.createElement("div");
       cell.className = "cell" + (isEnemy ? " enemy-cell" : "");
-      cell.dataset.x = c; 
+      cell.dataset.x = c;
       cell.dataset.y = r;
-
-      if (isEnemy) {
-        (function(cx, cy) {
-          cell.addEventListener("click", function(e) {
-            e.stopImmediatePropagation();   // Защита от повторных срабатываний
-            
-            // Стреляем только по разрешённым клеткам
-            if (!cell.classList.contains("shootable")) return;
-
-            // ←←← ВАЖНО: поддержка соло-режима
-            if (solo && solo.active) {
-              soloShoot(cx, cy);
-            } else {
-              shoot(cx, cy);
-            }
-          });
-        })(c, r);
-      }
-      
       el.appendChild(cell);
     }
   }
+}
+
+// ── НАДЁЖНЫЙ ДЕЛЕГАЦИОННЫЙ ОБРАБОТЧИК КЛИКОВ ПО ПОЛЮ ПРОТИВНИКА ──
+function setupEnemyGridClickHandler() {
+  var grid = document.getElementById("enemyGrid");
+  if (!grid) return;
+
+  // Удаляем старый обработчик, чтобы не было дублей
+  if (grid._hasClickHandler) grid.removeEventListener("click", grid._clickHandler);
+
+  grid._clickHandler = function(e) {
+    var cell = e.target.closest(".cell.enemy-cell");
+    if (!cell) return;
+
+    var x = parseInt(cell.dataset.x);
+    var y = parseInt(cell.dataset.y);
+
+    if (isNaN(x) || isNaN(y)) return;
+    if (!cell.classList.contains("shootable")) return;
+
+    console.log(`🎯 Клик по клетке противника: (${x},${y})`);
+
+    if (solo && solo.active) {
+      soloShoot(x, y);
+    } else {
+      shoot(x, y);
+    }
+  };
+
+  grid.addEventListener("click", grid._clickHandler, true);
+  grid._hasClickHandler = true;
+  console.log("✅ Delegation handler для enemyGrid установлен");
 }
 
 // ── ВЫСТРЕЛ ───────────────────────────────────────────────────
