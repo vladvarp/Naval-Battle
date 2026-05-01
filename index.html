@@ -3730,7 +3730,7 @@ async function restoreSoloSession() {
   try { s = JSON.parse(raw); } catch(e) { return false; }
   if (!s || !s.myBoard || !s.aiBoard) return false;
 
-  // ── ЖЁСТКИЙ СБРОС ВСЕГО ─────────────────────────────────────
+  // ── ЖЁСТКИЙ СБРОС ─────────────────────────────────────
   solo.active  = true;
   state.inputLocked = false;
   unlockInput();
@@ -3739,7 +3739,6 @@ async function restoreSoloSession() {
   solo.aiBoard = s.aiBoard;
   solo.shotsP1 = s.shotsP1 || [];
   solo.shotsP2 = s.shotsP2 || [];
-  solo.turn    = s.turn    || "player";
   solo.phase   = s.phase   || "playing";
   solo.winner  = s.winner  || null;
   solo.ai      = s.ai      || { hitQueue: [], tried: {} };
@@ -3759,8 +3758,7 @@ async function restoreSoloSession() {
 
   buildGridLabels();
   buildGrids();
-  restoreSoloLog();
-  restoreAudioRandFromStorage();                    // ← пересоздаём клетки + listeners
+  setupEnemyGridClickHandler();
 
   document.getElementById("waitingBlock").style.display = "none";
   document.getElementById("boardsBlock").style.display  = "block";
@@ -3774,7 +3772,13 @@ async function restoreSoloSession() {
   renderEnemyBoard(gs);
   renderFleetIndicators(gs);
 
-  // ── ГАРАНТИРОВАННАЯ РАЗБЛОКИРОВКА И СИНХРОНИЗАЦИЯ ───────────
+  restoreSoloLog();
+
+  // ── НОВАЯ ЛОГИКА: ОПРЕДЕЛЯЕМ ХОД ПО ИСТОРИИ ВЫСТРЕЛОВ ─────
+  solo.turn = determineSoloCurrentTurn();
+  addLog(`🔄 Восстановление после F5: ход ${solo.turn === "player" ? "ВАШ" : "КОМПЬЮТЕРА"}`, "miss");
+
+  // Применяем состояние
   if (solo.phase === "finished") {
     showWinner(gs);
   } else if (solo.turn === "player") {
@@ -3785,12 +3789,54 @@ async function restoreSoloSession() {
     setEnemyGridShootable(false);
     switchView("mine", true);
     updateTurnBadge(false, "КОМПЬЮТЕР");
-    // Защита от повторного выстрела ИИ при восстановлении
-    setTimeout(soloAITurn, 1200);
+    // Запускаем ход ИИ, если сейчас его очередь
+    setTimeout(soloAITurn, 800);
   }
 
-  console.log("✅ Solo-сессия успешно восстановлена");
+  console.log("✅ Solo-сессия восстановлена. Текущий ход:", solo.turn);
+  saveSoloSession(); // сохраняем исправленное состояние
   return true;
+}
+
+// Определяет, чей сейчас ход, глядя на историю выстрелов + журнал (самая надёжная версия)
+function determineSoloCurrentTurn() {
+  if (solo.shotsP1.length === 0 && solo.shotsP2.length === 0) {
+    return "player";
+  }
+
+  var lastP1 = solo.shotsP1.length > 0 ? solo.shotsP1[solo.shotsP1.length - 1] : null;
+  var lastP2 = solo.shotsP2.length > 0 ? solo.shotsP2[solo.shotsP2.length - 1] : null;
+
+  // Кто сделал больше выстрелов — тот стрелял последним
+  var lastShot = null;
+  var lastPlayer = null;
+
+  if (lastP1 && lastP2) {
+    if (solo.shotsP1.length > solo.shotsP2.length) {
+      lastShot = lastP1;
+      lastPlayer = "player";
+    } else {
+      lastShot = lastP2;
+      lastPlayer = "ai";
+    }
+  } else if (lastP1) {
+    lastShot = lastP1;
+    lastPlayer = "player";
+  } else {
+    lastShot = lastP2;
+    lastPlayer = "ai";
+  }
+
+  console.log(`🔍 determineSoloCurrentTurn → shotsP1=${solo.shotsP1.length}, shotsP2=${solo.shotsP2.length}, последний: ${lastPlayer} (${lastShot.result})`);
+
+  // Правило морского боя:
+  // Попадание / потопление → тот же игрок стреляет снова
+  if (lastShot.result === "hit" || lastShot.result === "sunk") {
+    return lastPlayer;
+  }
+
+  // Промах → ход переходит другому
+  return (lastPlayer === "player") ? "ai" : "player";
 }
 
 // ── ПЕРЕХВАТ ВЫСТРЕЛА В СОЛО-РЕЖИМЕ ──────────────────────────
@@ -3869,6 +3915,7 @@ async function soloShoot(x, y) {
       await showPhaseAnnouncement("💦 ПРОМАХ! ХОД КОМПЬЮТЕРА", "enemy");
       playEventSound("turnEnemy");           // ← звук хода компьютера
       solo.turn = "ai";
+      saveSoloSession();   // ← обязательно сохраняем сразу после смены хода
       var gs3 = soloMakeGS();
       state.gameState = gs3;
       renderEnemyBoard(gs3);
@@ -3982,6 +4029,7 @@ async function soloAITurn() {
     // Передаём ход игроку
     await sleepMs(SFX_DELAY + 1400);
     solo.turn = "player";
+    saveSoloSession();   // ← обязательно сохраняем сразу после смены хода
     await showPhaseAnnouncement("⚡ ВАШ ХОД!", "my");
     var wait = state.enemyShotShowUntil ? (state.enemyShotShowUntil - Date.now()) : 0;
     if (wait > 0) await sleepMs(wait);
