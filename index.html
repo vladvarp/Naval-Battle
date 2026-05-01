@@ -1170,6 +1170,93 @@
   }
 
   /* ── АДАПТИВНОСТЬ ─────────────────────────────────────── */
+  /* ── ШКАЛА ВЕРОЯТНОСТИ ПОБЕДЫ ────────────────────────────── */
+  .win-prob-bar-wrap {
+    margin: 0 0 12px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .win-prob-labels {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+  .win-prob-label-player {
+    color: #7dffb3;
+    font-family: 'Share Tech Mono', monospace;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .win-prob-label-enemy {
+    color: #ff9999;
+    font-family: 'Share Tech Mono', monospace;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .win-prob-pct-player {
+    font-family: 'Russo One', sans-serif;
+    font-size: 13px;
+    color: #7dffb3;
+    text-shadow: 0 0 8px rgba(46,204,113,0.5);
+    min-width: 38px;
+    display: inline-block;
+  }
+  .win-prob-pct-enemy {
+    font-family: 'Russo One', sans-serif;
+    font-size: 13px;
+    color: #ff9999;
+    text-shadow: 0 0 8px rgba(231,76,60,0.5);
+    min-width: 38px;
+    display: inline-block;
+    text-align: right;
+  }
+  .win-prob-title {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: rgba(168,228,255,0.35);
+    text-align: center;
+    flex: 1;
+  }
+  .win-prob-track {
+    position: relative;
+    width: 100%;
+    height: 10px;
+    background: rgba(2,13,24,0.7);
+    border-radius: 5px;
+    border: 1px solid rgba(26,159,212,0.15);
+    overflow: hidden;
+  }
+  .win-prob-fill-player {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: linear-gradient(90deg, rgba(39,174,96,0.9), rgba(46,204,113,0.7));
+    border-radius: 5px 0 0 5px;
+    transition: width 0.6s cubic-bezier(0.22,1,0.36,1);
+    box-shadow: 2px 0 8px rgba(46,204,113,0.35);
+  }
+  .win-prob-fill-enemy {
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    background: linear-gradient(270deg, rgba(231,76,60,0.9), rgba(255,80,80,0.7));
+    border-radius: 0 5px 5px 0;
+    transition: width 0.6s cubic-bezier(0.22,1,0.36,1);
+    box-shadow: -2px 0 8px rgba(231,76,60,0.35);
+  }
+  .win-prob-divider {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: rgba(168,228,255,0.6);
+    box-shadow: 0 0 6px rgba(168,228,255,0.4);
+    transition: left 0.6s cubic-bezier(0.22,1,0.36,1);
+    transform: translateX(-50%);
+  }
+
   @media (max-width: 640px) {
     .app { padding: 10px; }
     header { padding: 16px 12px 12px; }
@@ -1376,14 +1463,27 @@
 
     <!-- Игровые поля -->
     <div id="boardsBlock" style="display:none;">
-      <div class="legend">
-        <div class="legend-item"><div class="legend-dot ship"></div>Ваш корабль</div>
-        <div class="legend-item"><div class="legend-dot hit"></div>Попадание</div>
-        <div class="legend-item"><div class="legend-dot sunk"></div>Потоплен</div>
-        <div class="legend-item"><div class="legend-dot miss"></div>Промах</div>
-        <div class="legend-item"><div class="legend-dot water"></div>Вода</div>
-      </div>
 
+      <!-- Шкала вероятности победы -->
+      <div class="win-prob-bar-wrap" id="winProbBar">
+        <div class="win-prob-labels">
+          <div class="win-prob-label-player">
+            <span class="win-prob-pct-player" id="winProbPctPlayer">50%</span>
+            <span>ВЫ</span>
+          </div>
+          <div class="win-prob-label-enemy">
+            <span>ПРОТИВНИК</span>
+            <span class="win-prob-pct-enemy" id="winProbPctEnemy">50%</span>
+          </div>
+        </div>
+        <div class="win-prob-track">
+          <div class="win-prob-fill-player" id="winProbFillPlayer" style="width:50%"></div>
+          <div class="win-prob-fill-enemy" id="winProbFillEnemy" style="width:50%"></div>
+          <div class="win-prob-divider" id="winProbDivider" style="left:50%"></div>
+        </div>
+        <div class="win-prob-title">ВЕРОЯТНОСТЬ ПОБЕДЫ</div>
+      </div>
+      
       <!-- Ручной переключатель полей -->
       <div class="view-switcher" id="viewSwitcher">
         <span class="view-switcher-label">ПОКАЗАТЬ:</span>
@@ -1429,11 +1529,19 @@
         </div>
       </div>
 
-          <!-- Кнопки действий -->
+      <!-- Легенда -->
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot ship"></div>Rорабль</div>
+        <div class="legend-item"><div class="legend-dot hit"></div>Попадание</div>
+        <div class="legend-item"><div class="legend-dot sunk"></div>Потоплен</div>
+        <div class="legend-item"><div class="legend-dot miss"></div>Промах</div>
+        <!-- <div class="legend-item"><div class="legend-dot water"></div>Вода</div> -->
+      </div>
+
+    <!-- Кнопки действий -->
     <div class="actions-bar">
       <button class="btn btn-ghost btn-sm" id="btnSound" onclick="toggleSound()">🔊 Звук: ВКЛ</button>
       <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
-      <button class="btn btn-ghost btn-sm" data-role="btnCache" onclick="openAudioDebug()">🟥 Кэш</button>
       <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
     </div>
     
@@ -1451,6 +1559,7 @@
       <summary>⚙ АДМИНИСТРИРОВАНИЕ</summary>
       <div class="admin-inner"> </div>
       <button class="btn btn-ghost btn-sm" onclick="openAudioProb()">🎲 Вероятности звуков</button>
+      <button class="btn btn-ghost btn-sm" data-role="btnCache" onclick="openAudioDebug()">🟥 Кэш</button>
       <div class="admin-inner"> </div>
       <button class="btn btn-ghost btn-sm" onclick="forceUnlockInput()"style="background:rgba(46,204,113,0.2); border-color:#2ecc71; color:#7dffb3;">
         🔓 РАЗБЛОКИРОВАТЬ ВВОД
@@ -2636,6 +2745,85 @@ function updateTurnBadge(isMyTurn, enemyName) {
   }
 }
 
+// ── ШКАЛА ВЕРОЯТНОСТИ ПОБЕДЫ ──────────────────────────────────
+function updateWinProbability() {
+  var myGrid = document.getElementById("myGrid");
+  var enemyGrid = document.getElementById("enemyGrid");
+  if (!myGrid || !enemyGrid) return;
+
+  // ── Непростреленные клетки ────────────────────────────────
+  var myUntouched = 0;
+  myGrid.querySelectorAll(".cell").forEach(function(c) {
+    var cls = c.className.trim();
+    if (cls === "cell" || cls === "cell ship") myUntouched++;
+  });
+
+  var enemyUntouched = 0;
+  enemyGrid.querySelectorAll(".cell").forEach(function(c) {
+    var cls = c.className;
+    if (cls.indexOf("hit") === -1 && cls.indexOf("miss") === -1 && cls.indexOf("sunk") === -1) {
+      enemyUntouched++;
+    }
+  });
+
+  // ── Бонус за потопленные корабли ─────────────────────────
+  // 1-палубный +4, 2-палубный +2, 3-палубный +3, 4-палубный +1
+  var sunkBonus = { 1: 4, 2: 2, 3: 3, 4: 1 };
+
+  function calcSunkBonus(shots) {
+    if (!shots) return 0;
+    var bonus = 0;
+    shots.forEach(function(s) {
+      if (s.result === "sunk" && s.sunkCells) {
+        var size = s.sunkCells.length;
+        bonus += (sunkBonus[size] || 0);
+      }
+    });
+    return bonus;
+  }
+
+  var gs = state.gameState;
+  var myShots    = gs ? (state.mySlot === 1 ? gs.shotsP1 : gs.shotsP2) : null;
+  var enemyShots = gs ? (state.mySlot === 1 ? gs.shotsP2 : gs.shotsP1) : null;
+
+  // В соло-режиме — берём из solo.shots
+  if (solo && solo.active) {
+    myShots    = solo.shots    || [];
+    enemyShots = solo.aiShots  || [];
+  }
+
+  var playerBonus = calcSunkBonus(myShots);    // мы потопили вражеские корабли
+  var enemyBonus  = calcSunkBonus(enemyShots); // враг потопил наши корабли
+
+  // ── Итоговый счёт ─────────────────────────────────────────
+  // База: непростреленные клетки. Чем больше у тебя — тем лучше.
+  // Бонус за потопленные добавляется к своей стороне.
+  var playerScore = myUntouched + playerBonus;
+  var enemyScore  = enemyUntouched + enemyBonus;
+  var total = playerScore + enemyScore;
+
+  var playerPct, enemyPct;
+  if (total === 0) {
+    playerPct = 50; enemyPct = 50;
+  } else {
+    playerPct = Math.round(playerScore / total * 100);
+    enemyPct  = 100 - playerPct;
+  }
+
+  var fillPlayer = document.getElementById("winProbFillPlayer");
+  var fillEnemy  = document.getElementById("winProbFillEnemy");
+  var divider    = document.getElementById("winProbDivider");
+  var pctPlayer  = document.getElementById("winProbPctPlayer");
+  var pctEnemy   = document.getElementById("winProbPctEnemy");
+  if (!fillPlayer) return;
+
+  fillPlayer.style.width = playerPct + "%";
+  fillEnemy.style.width  = enemyPct + "%";
+  divider.style.left     = playerPct + "%";
+  pctPlayer.textContent  = playerPct + "%";
+  pctEnemy.textContent   = enemyPct + "%";
+}
+
 // ── ПОСТРОЕНИЕ МЕТОК СЕТКИ ────────────────────────────────────
 function buildGridLabels() {
   ["myLabelsRow","enemyLabelsRow"].forEach(function(id) {
@@ -3186,6 +3374,7 @@ function renderMyBoard(gs) {
       cell.classList.add("last-shot-enemy");
     }
   });
+  updateWinProbability();
 }
 
 // ── РЕНДЕР ПОЛЯ ПРОТИВНИКА ────────────────────────────────────
@@ -3218,6 +3407,7 @@ function renderEnemyBoard(gs) {
       cell.classList.add("last-shot");
     }
   });
+  updateWinProbability();
 }
 
 // ── КЛИКАБЕЛЬНОСТЬ ПОЛЯ ПРОТИВНИКА ───────────────────────────
