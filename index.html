@@ -2005,7 +2005,7 @@ async function cacheAudioFilesToCacheStorage(opts) {
   var overwrite    = !!(opts && opts.overwrite);
   var onlyMissing  = (opts && typeof opts.onlyMissing === "boolean") ? opts.onlyMissing : true;
   var timeoutMs    = (opts && opts.timeoutMs) || 20000;
-  var concurrency  = 5;
+  var concurrency  = 12;
 
   if (!isCacheStorageAvailable()) return;
   if (isFileProtocol()) return;
@@ -2105,7 +2105,7 @@ function loadOneAudioSrcInMemory(src, timeoutMs) {
 function preloadAllAudioInMemory(opts) {
   if (audioState.preload.promise) return audioState.preload.promise;
   var timeoutMs  = (opts && opts.timeoutMs) || 8000;
-  var concurrency = 5;
+  var concurrency = 12;
 
   var srcs       = buildPrioritizedAudioSrcList();
   var primeCount = srcs && typeof srcs._primeCount === "number" ? srcs._primeCount : 0;
