@@ -1384,7 +1384,7 @@
         <!-- Кнопки действий -->
         <div class="actions-bar">
           <button class="btn btn-ghost btn-sm" data-role="btnCache" onclick="openAudioDebug()">🟥 Кэш</button>
-          <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
+          <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶</button>
         </div>
   </div>
 
@@ -1415,7 +1415,7 @@
     </div>
     <div style="width:100%;max-width:520px;text-align:center;">
       <button class="btn btn-ghost btn-sm" data-role="btnCache" onclick="openAudioDebug()">🟥 Кэш</button>
-      <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
+      <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶</button>
     </div>
 
   </div>
@@ -1456,7 +1456,7 @@
       <div class="room-code" id="waitingRoomCode">—</div>
       <div> </div>
       <div class="actions-bar">
-        <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
+        <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶</button>
         <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
       </div>
     </div>
@@ -1540,8 +1540,8 @@
 
     <!-- Кнопки действий -->
     <div class="actions-bar">
-      <button class="btn btn-ghost btn-sm" id="btnSound" onclick="toggleSound()">🔊 Звук: ВКЛ</button>
-      <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶ Экран</button>
+      <button class="btn btn-ghost btn-sm" id="btnSound" onclick="toggleSound()">🔊 ВКЛ</button>
+      <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶</button>
       <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
     </div>
     
@@ -1775,7 +1775,7 @@ function setSoundEnabled(enabled) {
 function updateSoundButton() {
   var btn = document.getElementById("btnSound");
   if (!btn) return;
-  btn.textContent = (audioState.enabled ? "🔊" : "🔇") + " Звук: " + (audioState.enabled ? "ВКЛ" : "ВЫКЛ");
+  btn.textContent = (audioState.enabled ? "🔊" : "🔇") + " " + (audioState.enabled ? "ВКЛ" : "ВЫКЛ");
 }
 
 function toggleSound() {
@@ -2393,7 +2393,7 @@ function updateFullscreenButton() {
 
   btns.forEach(function(btn) {
     btn.style.display = "";
-    btn.textContent = (document.fullscreenElement ? "▢" : "⛶") + " Экран";
+    btn.textContent = (document.fullscreenElement ? "▢" : "⛶") + "";
   });
 }
 
