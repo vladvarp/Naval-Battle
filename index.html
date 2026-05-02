@@ -943,36 +943,32 @@
 
   /* ── ОВЕРЛЕЙ ЗАГРУЗКИ АУДИО ──────────────────────────── */
   .audio-loading-overlay {
-    display: none; position: fixed; inset: 0;
-    background: rgba(2,13,24,0.88); z-index: 1200;
-    align-items: center; justify-content: center;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    display: none;
+    position: fixed;
+    top: 14px; right: 14px;
+    z-index: 1200;
+    pointer-events: none;
   }
-  .audio-loading-overlay.show { display: flex; }
+  .audio-loading-overlay.show { display: block; }
   .audio-loading-card {
-    background: rgba(4,31,53,0.97);
-    border: 2px solid rgba(26,159,212,0.55);
-    border-radius: 16px;
-    padding: 28px 30px;
-    text-align: center;
-    max-width: 92vw;
-    box-shadow: 0 0 70px rgba(26,159,212,0.18);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(4,31,53,0.82);
+    border: 1px solid rgba(26,159,212,0.25);
+    border-radius: 8px;
+    padding: 7px 12px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 2px 16px rgba(0,0,0,0.35);
   }
-  .audio-loading-title {
-    font-family: 'Russo One', sans-serif;
-    font-size: 14px;
-    letter-spacing: 3px;
-    color: var(--foam);
-    margin-bottom: 10px;
-  }
+  .audio-loading-title { display: none; }
   .audio-loading-meta {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 10px;
-    color: rgba(168,228,255,0.55);
-    font-size: 11px;
+    gap: 7px;
+    color: rgba(168,228,255,0.45);
+    font-size: 10px;
     letter-spacing: 1px;
   }
 
@@ -1297,13 +1293,12 @@
 <!-- Объявление смены хода -->
 <div class="phase-announcement" id="phaseAnnouncement"></div>
 
-<!-- Оверлей загрузки аудио -->
+<!-- Индикатор загрузки аудио (угол) -->
 <div class="audio-loading-overlay" id="audioLoadingOverlay">
   <div class="audio-loading-card">
-    <div class="audio-loading-title">ЗАГРУЗКА АУДИО</div>
     <div class="audio-loading-meta">
       <div class="spin-icon"></div>
-      <span id="audioLoadingText">Подготовка...</span>
+      <span id="audioLoadingText">аудио...</span>
     </div>
   </div>
 </div>
@@ -2142,15 +2137,34 @@ function preloadAllAudioInMemory(opts) {
 
 function preloadAllAudioToCache(opts) {
   if (audioState.preload.promise) return audioState.preload.promise;
+
+  // Показываем индикатор — он сам скроется когда загрузка завершится
+  setAudioLoadingOverlay(true, "аудио 0%");
+  var _indicatorTimer = setInterval(function() {
+    var total = audioState.preload.total || 0;
+    var fin   = audioState.preload.finished || 0;
+    var pct   = total > 0 ? Math.round(fin / total * 100) : 0;
+    setAudioLoadingOverlay(true, "аудио " + pct + "%");
+  }, 120);
+
+  var promise;
   if (isFileProtocol()) {
-    audioState.preload.promise = preloadAllAudioInMemory({ timeoutMs: (opts && opts.timeoutMs) || 8000 });
+    promise = preloadAllAudioInMemory({ timeoutMs: (opts && opts.timeoutMs) || 8000 });
   } else {
-    audioState.preload.promise = cacheAudioFilesToCacheStorage({
+    promise = cacheAudioFilesToCacheStorage({
       overwrite: !!(opts && opts.overwrite),
       onlyMissing: (opts && typeof opts.onlyMissing === "boolean") ? opts.onlyMissing : true,
       timeoutMs: (opts && opts.timeoutMs) || 20000
     });
   }
+
+  audioState.preload.promise = promise.then(function() {
+    clearInterval(_indicatorTimer);
+    setAudioLoadingOverlay(false);
+  }, function() {
+    clearInterval(_indicatorTimer);
+    setAudioLoadingOverlay(false);
+  });
 
   return audioState.preload.promise;
 }
@@ -2162,8 +2176,8 @@ async function ensureAudioReadyBeforeGame() {
   var timer = setInterval(function() {
     var total = audioState.preload.total || 0;
     var fin = audioState.preload.finished || 0;
-    var cur = audioState.preload.currentSrc ? (" · " + prettyAudioName(audioState.preload.currentSrc)) : "";
-    setAudioLoadingOverlay(true, "Загрузка " + fin + "/" + total + cur);
+    var pct = total > 0 ? Math.round(fin / total * 100) : 0;
+    setAudioLoadingOverlay(true, "аудио " + pct + "%");
   }, 120);
 
   try {
@@ -2678,7 +2692,7 @@ async function joinRoom(roomId) {
 
 // ── ПЕРЕХОД В ИГРОВОЙ ЭКРАН ───────────────────────────────────
 async function enterGameScreen() {
-  await ensureAudioReadyBeforeGame();
+  preloadAllAudioToCache({ overwrite: false, onlyMissing: true }); // фоновая загрузка, не блокируем
   showScreen("gameScreen");
   document.getElementById("waitingRoomCode").textContent = state.roomId || "—";
   // Восстанавливаем вероятности звуков для этой комнаты/сессии (переживает F5)
@@ -2934,6 +2948,25 @@ async function shoot(x, y) {
     }
 
     var result = res.result || "miss";
+
+    // Для попадания: вычисляем угловые клетки на стороне клиента
+    if (result === "hit" && !res.hitCorners) {
+      var corners = [[-1,-1],[1,-1],[-1,1],[1,1]];
+      var myShots2 = state.mySlot === 1 ? state.gameState.shotsP1 : state.gameState.shotsP2;
+      var shotSet2 = {};
+      myShots2.forEach(function(s){ shotSet2[s.y+"_"+s.x] = true; });
+      shotSet2[y+"_"+x] = true;
+      var computedCorners = [];
+      corners.forEach(function(d) {
+        var nx = x + d[0], ny = y + d[1];
+        var k = ny + "_" + nx;
+        if (nx >= 0 && nx <= 9 && ny >= 0 && ny <= 9 && !shotSet2[k]) {
+          computedCorners.push({ x: nx, y: ny });
+        }
+      });
+      if (computedCorners.length) res.hitCorners = computedCorners;
+    }
+
     await playImpactEffect(targetCell, result);
 
     if (res.gameOver) {
@@ -3136,6 +3169,8 @@ function applyLocalShot(x, y, result, res) {
   if (result === "sunk" && res) {
     shotObj.sunkCells     = res.sunkCells     || [];
     shotObj.sunkPerimeter = res.sunkPerimeter || [];
+  } else if (result === "hit" && res && res.hitCorners) {
+    shotObj.hitCorners = res.hitCorners;
   }
   shots.push(shotObj);
 
@@ -3166,6 +3201,20 @@ function applyLocalShot(x, y, result, res) {
       cell.className = "cell enemy-cell";
       if (result === "hit")       cell.classList.add("hit");
       else if (result === "miss") cell.classList.add("miss");
+    }
+    // Угловые клетки попадания → промахи
+    if (result === "hit" && res && res.hitCorners) {
+      res.hitCorners.forEach(function(c) {
+        var key_exists = false;
+        for (var j = 0; j < shots.length; j++) {
+          if (shots[j].x === c.x && shots[j].y === c.y) { key_exists = true; break; }
+        }
+        if (!key_exists) shots.push({ x: c.x, y: c.y, result: "miss", auto: true });
+        var cornerCell = getEnemyCellElement(c.x, c.y);
+        if (cornerCell && !cornerCell.classList.contains("sunk") && !cornerCell.classList.contains("hit")) {
+          cornerCell.className = "cell enemy-cell miss";
+        }
+      });
     }
   }
 
@@ -3360,6 +3409,10 @@ function renderMyBoard(gs) {
         if (s.sunkPerimeter) s.sunkPerimeter.forEach(function(c){ if (!shotMap[c.y+"_"+c.x]) shotMap[c.y+"_"+c.x] = "miss"; });
       } else {
         shotMap[s.y+"_"+s.x] = s.result;
+        // Угловые клетки попадания → miss
+        if (s.result === "hit" && s.hitCorners) {
+          s.hitCorners.forEach(function(c){ if (!shotMap[c.y+"_"+c.x]) shotMap[c.y+"_"+c.x] = "miss"; });
+        }
       }
     });
   }
@@ -3395,6 +3448,10 @@ function renderEnemyBoard(gs) {
         if (s.sunkPerimeter) s.sunkPerimeter.forEach(function(c){ if (!shotMap[c.y+"_"+c.x]) shotMap[c.y+"_"+c.x] = "miss"; });
       } else {
         shotMap[s.y+"_"+s.x] = s.result;
+        // Угловые клетки попадания → miss
+        if (s.result === "hit" && s.hitCorners) {
+          s.hitCorners.forEach(function(c){ if (!shotMap[c.y+"_"+c.x]) shotMap[c.y+"_"+c.x] = "miss"; });
+        }
       }
     });
   }
@@ -3629,6 +3686,9 @@ function getShotsMapFromShots(shots) {
       if (s.sunkPerimeter) s.sunkPerimeter.forEach(function(c){ if (!map[c.y + "_" + c.x]) map[c.y + "_" + c.x] = "miss"; });
     } else {
       map[s.y + "_" + s.x] = s.result;
+      if (s.result === "hit" && s.hitCorners) {
+        s.hitCorners.forEach(function(c){ if (!map[c.y + "_" + c.x]) map[c.y + "_" + c.x] = "miss"; });
+      }
     }
   });
   return map;
@@ -3852,7 +3912,6 @@ async function startSoloGame() {
   state.inputLocked = false;
   state.enemyShotShowUntil = 0;
 
-  await ensureAudioReadyBeforeGame();
   showScreen("gameScreen");
   buildGridLabels();
   buildGrids();
@@ -3947,7 +4006,6 @@ async function restoreSoloSession() {
   state.lastShot  = { my: null, enemy: null };
   state.enemyShotShowUntil = 0;
 
-  await ensureAudioReadyBeforeGame();
   showScreen("gameScreen");
 
   buildGridLabels();
@@ -4074,8 +4132,17 @@ async function soloShoot(x, y) {
         if (solo.aiBoard[c.y] && solo.aiBoard[c.y][c.x] !== undefined) 
           solo.aiBoard[c.y][c.x] = 2; 
       });
+    } else if (result.type === "hit" && result.hitCorners && result.hitCorners.length) {
+      shotObj.hitCorners = result.hitCorners;
     }
     solo.shotsP1.push(shotObj);
+    // Добавляем угловые авто-промахи при попадании
+    if (result.type === "hit" && result.hitCorners) {
+      result.hitCorners.forEach(function(c) {
+        var exists = solo.shotsP1.some(function(s){ return s.x === c.x && s.y === c.y; });
+        if (!exists) solo.shotsP1.push({ x: c.x, y: c.y, result: "miss", auto: true });
+      });
+    }
     saveSoloSession();
 
     // Звуки
@@ -4154,6 +4221,10 @@ async function soloAITurn() {
       return !result.sunkCells.some(function(sc){ return sc.x === q.x && sc.y === q.y; });
     });
   } else if (result.type === "hit") {
+    if (result.hitCorners) {
+      // Помечаем угловые клетки как уже "отработанные" для ИИ
+      result.hitCorners.forEach(function(c) { solo.ai.tried[c.y + "_" + c.x] = true; });
+    }
     // Добавляем соседей в очередь
     [[0,-1],[0,1],[-1,0],[1,0]].forEach(function(d) {
       var nx = x + d[0], ny = y + d[1];
@@ -4181,8 +4252,17 @@ async function soloAITurn() {
   if (result.type === "sunk") {
     shotObjForGs.sunkCells     = result.sunkCells;
     shotObjForGs.sunkPerimeter = result.sunkPerimeter;
+  } else if (result.type === "hit" && result.hitCorners && result.hitCorners.length) {
+    shotObjForGs.hitCorners = result.hitCorners;
   }
   solo.shotsP2.push(shotObjForGs);
+  // Добавляем угловые авто-промахи при попадании ИИ
+  if (result.type === "hit" && result.hitCorners) {
+    result.hitCorners.forEach(function(c) {
+      var exists = solo.shotsP2.some(function(s){ return s.x === c.x && s.y === c.y; });
+      if (!exists) solo.shotsP2.push({ x: c.x, y: c.y, result: "miss", auto: true });
+    });
+  }
   saveSoloSession();
 
   var resText = result.type === "hit" ? "Попадание!" : result.type === "sunk" ? "Потопил!" : "Промах";
@@ -4280,7 +4360,8 @@ function soloCheckHit(board, shots, x, y) {
       var perimeter = soloShipPerimeter(board, shipCells, shots, x, y);
       return { type: "sunk", sunkCells: shipCells, sunkPerimeter: perimeter };
     } else {
-      return { type: "hit" };
+      var corners = hitCellCorners(board, x, y, shots, x, y);
+      return { type: "hit", hitCorners: corners };
     }
   } else {
     return { type: "miss" };
@@ -4305,6 +4386,28 @@ function soloFindShip(board, sx, sy) {
     });
   }
   return cells;
+}
+
+// Возвращает угловые клетки вокруг одной поражённой клетки (не занятые кораблём и не простреленные)
+function hitCellCorners(board, x, y, shots, currentX, currentY) {
+  var corners = [[-1,-1],[1,-1],[-1,1],[1,1]];
+  var shotSet = {};
+  shots.forEach(function(s) { shotSet[s.y + "_" + s.x] = true; });
+  shotSet[currentY + "_" + currentX] = true;
+  var result = [];
+  var seen = {};
+  corners.forEach(function(d) {
+    var nx = x + d[0], ny = y + d[1];
+    var k = ny + "_" + nx;
+    if (nx >= 0 && nx <= 9 && ny >= 0 && ny <= 9 && !seen[k]) {
+      seen[k] = true;
+      // Не отмечаем если там корабль или уже простреляно
+      if ((board[ny][nx] !== 1 && board[ny][nx] !== 2) && !shotSet[k]) {
+        result.push({ x: nx, y: ny });
+      }
+    }
+  });
+  return result;
 }
 
 function soloShipPerimeter(board, shipCells, shots, currentX, currentY) {
