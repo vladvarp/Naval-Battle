@@ -1601,7 +1601,7 @@
 
 // ── КОНФИГУРАЦИЯ ─────────────────────────────────────────────
 var API_URL = "https://script.google.com/macros/s/AKfycbwn8DhEjFzVM2H6flgE5YOAPp9VJNArbpn7j4jTF49Yty2nICY6L-IqrjcPbyzp-32DWQ/exec";
-var POLL_INTERVAL  = 300;  // мс — polling состояния игры
+var POLL_INTERVAL  = 800;  // мс — polling состояния игры
 var LOBBY_INTERVAL = 10000; // мс — обновление списка комнат
 
 // ── АУДИО ────────────────────────────────────────────────────
@@ -2979,6 +2979,8 @@ async function shoot(x, y) {
   } catch(e) {
     console.error("Ошибка выстрела:", e);
     addLog("Ошибка выстрела. Проверьте соединение.", "miss");
+    // Синхронизируем состояние с сервером, чтобы корректно восстановить ход
+    try { await fetchState(); } catch(e2) {}
   } finally {
     unlockInput();
     // Если ход всё ещё наш — вернём кликабельность
@@ -3270,7 +3272,10 @@ function computeLastNonPerimeterShot(shots) {
 function startPolling() { fetchState(); state.pollTimer = setInterval(fetchState, POLL_INTERVAL); }
 function stopPolling()  { if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; } }
 
+var _fetchStatePending = false;
 async function fetchState() {
+  if (_fetchStatePending) return;          // защита от параллельных вызовов
+  _fetchStatePending = true;
   var dot = document.getElementById("pollingDot");
   dot.classList.add("active");
   try {
@@ -3279,6 +3284,7 @@ async function fetchState() {
     if (!gs.ok) return;
     processGameState(gs);
   } catch(e) { dot.classList.remove("active"); }
+  finally { _fetchStatePending = false; }
 }
 
 // ── ОБРАБОТКА СОСТОЯНИЯ ───────────────────────────────────────
