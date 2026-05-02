@@ -3322,6 +3322,7 @@ function processGameState(gs) {
 
   renderMyBoard(gs);
   renderEnemyBoard(gs);
+  ensureHitCornerMisses();
   renderFleetIndicators(gs);
 
   var isMyTurn = (gs.phase === "playing" && gs.turn === state.playerId);
@@ -3415,7 +3416,6 @@ function renderMyBoard(gs) {
         if (s.sunkPerimeter) s.sunkPerimeter.forEach(function(c){ if (!shotMap[c.y+"_"+c.x]) shotMap[c.y+"_"+c.x] = "miss"; });
       } else {
         shotMap[s.y+"_"+s.x] = s.result;
-        // Угловые клетки попадания → miss
         if (s.result === "hit" && s.hitCorners) {
           s.hitCorners.forEach(function(c){ if (!shotMap[c.y+"_"+c.x]) shotMap[c.y+"_"+c.x] = "miss"; });
         }
@@ -3438,6 +3438,9 @@ function renderMyBoard(gs) {
     }
   });
   updateWinProbability();
+
+  // ←←← ФИКС: угловые miss вокруг последнего попадания противника
+  ensureHitCornerMisses();
 }
 
 // ── РЕНДЕР ПОЛЯ ПРОТИВНИКА ────────────────────────────────────
@@ -3448,13 +3451,10 @@ function renderEnemyBoard(gs) {
   if (myShots) {
     myShots.forEach(function(s) {
       if (s.result === "sunk" && s.sunkCells) {
-        // Все клетки потопленного корабля → sunk
         s.sunkCells.forEach(function(c){ shotMap[c.y+"_"+c.x] = "sunk"; });
-        // Периметр → miss
         if (s.sunkPerimeter) s.sunkPerimeter.forEach(function(c){ if (!shotMap[c.y+"_"+c.x]) shotMap[c.y+"_"+c.x] = "miss"; });
       } else {
         shotMap[s.y+"_"+s.x] = s.result;
-        // Угловые клетки попадания → miss
         if (s.result === "hit" && s.hitCorners) {
           s.hitCorners.forEach(function(c){ if (!shotMap[c.y+"_"+c.x]) shotMap[c.y+"_"+c.x] = "miss"; });
         }
@@ -3475,6 +3475,9 @@ function renderEnemyBoard(gs) {
     }
   });
   updateWinProbability();
+
+  // ←←← ФИКС: угловые miss вокруг последнего попадания
+  ensureHitCornerMisses();
 }
 
 // ── КЛИКАБЕЛЬНОСТЬ ПОЛЯ ПРОТИВНИКА ───────────────────────────
@@ -3886,6 +3889,58 @@ function soloPlaceShips() {
     }
   }
   return board;
+}
+
+// ── ФИКС: угловые miss-клетки вокруг ВСЕХ попаданий (не пропадают) ──
+function ensureHitCornerMisses() {
+  // Поле противника — защищаем ВСЕ hit и sunk
+  const enemyGrid = document.getElementById('enemyGrid');
+  if (enemyGrid) {
+    const hits = enemyGrid.querySelectorAll('.cell.hit, .cell.sunk');
+    hits.forEach(cell => {
+      const x = parseInt(cell.dataset.x);
+      const y = parseInt(cell.dataset.y);
+      if (isNaN(x) || isNaN(y)) return;
+      applyDiagonalMisses('enemyGrid', x, y, true);
+    });
+  }
+
+  // Своё поле — защищаем ВСЕ my-hit и my-sunk
+  const myGrid = document.getElementById('myGrid');
+  if (myGrid) {
+    const hits = myGrid.querySelectorAll('.cell.my-hit, .cell.my-sunk');
+    hits.forEach(cell => {
+      const x = parseInt(cell.dataset.x);
+      const y = parseInt(cell.dataset.y);
+      if (isNaN(x) || isNaN(y)) return;
+      applyDiagonalMisses('myGrid', x, y, false);
+    });
+  }
+}
+
+function applyDiagonalMisses(gridId, x, y, isEnemy) {
+  const corners = [[-1,-1],[1,-1],[-1,1],[1,1]];
+  corners.forEach(([dx, dy]) => {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx < 0 || nx > 9 || ny < 0 || ny > 9) return;
+
+    const cell = document.querySelector(`#${gridId} .cell[data-x="${nx}"][data-y="${ny}"]`);
+    if (!cell) return;
+
+    // Не трогаем уже попадания/потопленные
+    if (cell.classList.contains('hit') || 
+        cell.classList.contains('sunk') || 
+        cell.classList.contains('my-hit') || 
+        cell.classList.contains('my-sunk')) return;
+
+    // Принудительно ставим miss
+    if (isEnemy) {
+      cell.className = 'cell enemy-cell miss';
+    } else {
+      cell.className = 'cell miss';
+    }
+  });
 }
 
 // ── ИНИЦИАЛИЗАЦИЯ СОЛО-ИГРЫ ───────────────────────────────────
