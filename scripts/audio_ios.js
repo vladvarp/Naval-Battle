@@ -507,7 +507,7 @@ async function registerAudioServiceWorker() {
   if (isFileProtocol()) return;
   if (!("serviceWorker" in navigator)) return;
   try {
-    await navigator.serviceWorker.register("./sw.js", { scope: "./" });
+    await navigator.serviceWorker.register("./scripts/sw.js", { scope: "./" });
   } catch (e) {}
 }
 
