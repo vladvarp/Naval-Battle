@@ -160,6 +160,17 @@ letter-spacing: 3px;
 color: rgba(168,228,255,0.5);
 margin-top: 4px;
 }
+.logo-ios {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px !important;           /* очень маленький */
+    letter-spacing: 2px;
+    color: #a8e4ff;
+    opacity: 0.65;
+    margin-bottom: -3px;                  /* плотно прижимаем к COMBAT */
+    margin-left: 4px;
+    align-self: flex-end;
+    text-shadow: 0 0 8px rgba(168,228,255,0.4);
+  }
 
 /* ── ОСНОВНОЙ КОНТЕЙНЕР ──────────────────────────────── */
 .app {
