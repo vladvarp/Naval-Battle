@@ -1648,46 +1648,165 @@ var audioState = {
   rand: { poolSize: RANDOM_POOL_SIZE, byEvent: {} },
 };
 
-function waitAudioEnded(a) {
-  return new Promise(function(resolve) {
-    if (!a) { resolve(); return; }
-    var done = false;
-    function finish() {
-      if (done) return;
-      done = true;
-      try { a.removeEventListener("ended", finish); } catch(e) {}
-      try { a.removeEventListener("error", finish); } catch(e) {}
-      resolve();
-    }
-    try { a.addEventListener("ended", finish, { once: true }); } catch(e) { a.onended = finish; }
-    try { a.addEventListener("error", finish, { once: true }); } catch(e) {}
-  });
+// Новый движок Web Audio:
+// - один AudioContext на всё приложение
+// - кэш декодированных AudioBuffer по src
+// - одновременное воспроизведение без очереди (overlay)
+var audioEngine = {
+  context: null,
+  masterGain: null,
+  buffers: {},           // { [src]: AudioBuffer }
+  inflight: {},          // { [src]: Promise<AudioBuffer|null> }
+  activeSources: new Set(),
+  initialized: false,
+  initPromise: null,
+  maxConcurrency: 8
+};
+
+function ensureAudioContext() {
+  if (audioEngine.context) return audioEngine.context;
+  var Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return null;
+  try {
+    audioEngine.context = new Ctx();
+    audioEngine.masterGain = audioEngine.context.createGain();
+    audioEngine.masterGain.gain.value = audioState.enabled ? audioState.volume : 0;
+    audioEngine.masterGain.connect(audioEngine.context.destination);
+  } catch (e) {
+    audioEngine.context = null;
+    audioEngine.masterGain = null;
+  }
+  return audioEngine.context;
 }
 
-async function pumpAudioQueue() {
-  if (audioState.queuePlaying) return;
-  audioState.queuePlaying = true;
+function applyAudioOutputState() {
+  if (!audioEngine.masterGain) return;
   try {
-    while (audioState.enabled && audioState.unlocked && audioState.queue && audioState.queue.length) {
-      var src = audioState.queue.shift();
-      if (!src) continue;
-      var a = audioState.cache[src];
-      if (!a) {
-        try {
-          a = new Audio(src);
-          a.preload = "auto";
-          a.load();
-          audioState.cache[src] = a;
-        } catch(e) { continue; }
-      }
-      try { a.volume = audioState.volume; } catch(e) {}
-      try { a.currentTime = 0; } catch (e) {}
-      try { await a.play(); } catch(e) {}
-      await waitAudioEnded(a);
-    }
-  } finally {
-    audioState.queuePlaying = false;
+    audioEngine.masterGain.gain.setValueAtTime(
+      audioState.enabled ? audioState.volume : 0,
+      audioEngine.context.currentTime
+    );
+  } catch (e) {
+    try { audioEngine.masterGain.gain.value = audioState.enabled ? audioState.volume : 0; } catch (e2) {}
   }
+}
+
+async function resumeAudioContextIfNeeded() {
+  var ctx = ensureAudioContext();
+  if (!ctx) return false;
+  if (ctx.state === "suspended") {
+    try { await ctx.resume(); } catch (e) {}
+  }
+  return ctx.state === "running" || ctx.state === "suspended";
+}
+
+async function fetchAudioArrayBuffer(src, timeoutMs) {
+  var abs = toAbsoluteUrl(src);
+  var ctrl = ("AbortController" in window) ? new AbortController() : null;
+  var t = setTimeout(function() { try { if (ctrl) ctrl.abort(); } catch(e) {} }, timeoutMs || 20000);
+  try {
+    var res = await fetch(abs, { signal: ctrl ? ctrl.signal : undefined, cache: "force-cache" });
+    if (!res || !res.ok) return null;
+    return await res.arrayBuffer();
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function decodeBufferFromSrc(src, timeoutMs) {
+  var ctx = ensureAudioContext();
+  if (!ctx) return null;
+
+  if (audioEngine.buffers[src]) return audioEngine.buffers[src];
+  if (audioEngine.inflight[src]) return audioEngine.inflight[src];
+
+  audioEngine.inflight[src] = (async function() {
+    var arr = await fetchAudioArrayBuffer(src, timeoutMs);
+    if (!arr) return null;
+    try {
+      // В Safari decodeAudioData может модифицировать входной ArrayBuffer.
+      // Поэтому отдаём копию, чтобы избежать редких side-effects.
+      var copy = arr.slice(0);
+      var decoded = await ctx.decodeAudioData(copy);
+      if (decoded) audioEngine.buffers[src] = decoded;
+      return decoded || null;
+    } catch (e) {
+      return null;
+    } finally {
+      delete audioEngine.inflight[src];
+    }
+  })();
+
+  return audioEngine.inflight[src];
+}
+
+async function preloadBuffers(srcs, opts) {
+  if (!srcs || !srcs.length) return;
+  var timeoutMs = (opts && opts.timeoutMs) || 20000;
+  var concurrency = (opts && opts.concurrency) || audioEngine.maxConcurrency;
+  var trackProgress = !!(opts && opts.trackProgress);
+  var phase1Count = (opts && typeof opts.phase1Count === "number") ? opts.phase1Count : 0;
+
+  var idx = 0;
+  async function worker() {
+    while (idx < srcs.length) {
+      var i = idx++;
+      var src = srcs[i];
+      if (!src) continue;
+      if (trackProgress) {
+        audioState.preload.currentSrc = src;
+        audioState.preload.phase = (i < phase1Count ? "prime" : "rest");
+      }
+      await decodeBufferFromSrc(src, timeoutMs);
+      if (trackProgress) audioState.preload.finished++;
+    }
+  }
+
+  var workers = [];
+  for (var w = 0; w < concurrency; w++) workers.push(worker());
+  await Promise.all(workers);
+}
+
+async function initWebAudio(opts) {
+  if (audioEngine.initPromise) return audioEngine.initPromise;
+  var trackPreloadState = !!(opts && opts.trackPreloadState);
+
+  audioEngine.initPromise = (async function() {
+    var ctx = ensureAudioContext();
+    if (!ctx) return false;
+
+    var srcs = buildPrioritizedAudioSrcList();
+    var phase1Count = srcs && typeof srcs._primeCount === "number" ? srcs._primeCount : 0;
+
+    if (trackPreloadState) {
+      audioState.preload.started = true;
+      audioState.preload.done = false;
+      audioState.preload.promise = null;
+      audioState.preload.total = srcs.length;
+      audioState.preload.finished = 0;
+      audioState.preload.currentSrc = null;
+      audioState.preload.phase = "prime";
+    }
+
+    await preloadBuffers(srcs, {
+      timeoutMs: 20000,
+      concurrency: audioEngine.maxConcurrency,
+      trackProgress: trackPreloadState,
+      phase1Count: phase1Count
+    });
+
+    if (trackPreloadState) {
+      audioState.preload.currentSrc = null;
+      audioState.preload.done = true;
+    }
+    audioEngine.initialized = true;
+    applyAudioOutputState();
+    return true;
+  })();
+
+  return audioEngine.initPromise;
 }
 
 function getAudioRandStateForEvent(eventId, cfg) {
@@ -1768,6 +1887,7 @@ function weightedPickIndex(weights) {
 function setSoundEnabled(enabled) {
   audioState.enabled = !!enabled;
   localStorage.setItem("mb_sound_enabled", audioState.enabled ? "1" : "0");
+  applyAudioOutputState();
   updateSoundButton();
 }
 
@@ -1783,7 +1903,9 @@ function toggleSound() {
 
 function unlockAudioOnce() {
   audioState.unlocked = true;
-  // Лёгкая предзагрузка самых частых/существующих звуков (уменьшает задержки на некоторых браузерах)
+  // На iOS Safari это критично: при первом жесте пользователя будим AudioContext.
+  resumeAudioContextIfNeeded();
+  // Лёгкий прайм часто используемых категорий (без блокировки UI).
   preloadAudioForEventIds(["shoot","gameStart","gameWin","gameLose"]);
 }
 
@@ -1797,20 +1919,20 @@ function getAudioEventConfig(id) {
 
 function preloadAudioForEventIds(ids) {
   if (!ids || !ids.length) return;
+  var srcs = [];
   ids.forEach(function(id) {
     var cfg = getAudioEventConfig(id);
     if (!cfg || !cfg.folder || !cfg.files) return;
     for (var i = 0; i < cfg.files.length; i++) {
       var file = cfg.files[i];
       var src = cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "") + "/" + String(file);
-      if (audioState.cache[src]) continue;
-      try {
-        var a = new Audio(src);
-        a.preload = "auto";
-        a.load();
-        audioState.cache[src] = a;
-      } catch (e) {}
+      if (audioEngine.buffers[src]) continue;
+      srcs.push(src);
     }
+  });
+  if (!srcs.length) return;
+  initWebAudio().then(function() {
+    preloadBuffers(srcs, { timeoutMs: 12000, concurrency: 4, trackProgress: false });
   });
 }
 
@@ -2061,77 +2183,9 @@ async function cacheAudioFilesToCacheStorage(opts) {
   await updateCacheButtons();
 }
 
-// Fallback (file://): sequential in-memory preload via <audio>
-function loadOneAudioSrcInMemory(src, timeoutMs) {
-  return new Promise(function(resolve) {
-    var a = audioState.cache[src];
-    if (!a) {
-      try {
-        a = new Audio(src);
-        a.preload = "auto";
-        audioState.cache[src] = a;
-      } catch (e) {
-        resolve({ src: src, ok: false });
-        return;
-      }
-    }
-
-    var done = false;
-    function finish(ok) {
-      if (done) return;
-      done = true;
-      resolve({ src: src, ok: !!ok });
-    }
-
-    try {
-      a.addEventListener("canplaythrough", function() { finish(true); }, { once: true });
-      a.addEventListener("loadeddata",     function() { finish(true); }, { once: true });
-      a.addEventListener("error",          function() { finish(false); }, { once: true });
-      a.load();
-    } catch (e) {
-      finish(false);
-      return;
-    }
-
-    setTimeout(function() { finish(false); }, timeoutMs || 8000);
-  });
-}
-
 function preloadAllAudioInMemory(opts) {
   if (audioState.preload.promise) return audioState.preload.promise;
-  var timeoutMs  = (opts && opts.timeoutMs) || 8000;
-  var concurrency = 12;
-
-  var srcs       = buildPrioritizedAudioSrcList();
-  var primeCount = srcs && typeof srcs._primeCount === "number" ? srcs._primeCount : 0;
-
-  audioState.preload.started  = true;
-  audioState.preload.done     = false;
-  audioState.preload.promise  = null;
-  audioState.preload.total    = srcs.length;
-  audioState.preload.finished = 0;
-  audioState.preload.currentSrc = null;
-  audioState.preload.phase    = "prime";
-
-  audioState.preload.promise = (async function() {
-    var idx = 0;
-    async function worker() {
-      while (idx < srcs.length) {
-        var i   = idx++;
-        var src = srcs[i];
-        audioState.preload.currentSrc = src;
-        audioState.preload.phase = (i < primeCount ? "prime" : "rest");
-        await loadOneAudioSrcInMemory(src, timeoutMs);
-        audioState.preload.finished++;
-      }
-    }
-    var workers = [];
-    for (var w = 0; w < concurrency; w++) workers.push(worker());
-    await Promise.all(workers);
-    audioState.preload.currentSrc = null;
-    audioState.preload.done = true;
-  })();
-
+  audioState.preload.promise = initWebAudio({ trackPreloadState: true }).then(function() {});
   return audioState.preload.promise;
 }
 
@@ -2161,6 +2215,9 @@ function preloadAllAudioToCache(opts) {
   audioState.preload.promise = promise.then(function() {
     clearInterval(_indicatorTimer);
     setAudioLoadingOverlay(false);
+    // После прогрева Cache Storage сразу прогреваем декодированные AudioBuffer.
+    // Это снимает проблему iOS Safari с множественными new Audio().
+    initWebAudio();
   }, function() {
     clearInterval(_indicatorTimer);
     setAudioLoadingOverlay(false);
@@ -2188,12 +2245,8 @@ async function ensureAudioReadyBeforeGame() {
   }
 }
 
-function playEventSound(id) {
-  if (!audioState.enabled) return;
-  if (!audioState.unlocked) return;
-
-  var cfg = getAudioEventConfig(id);
-  if (!cfg || !cfg.folder || !cfg.files || !cfg.files.length) return;
+function getRandomSoundByWeight(id, cfg) {
+  if (!cfg || !cfg.folder || !cfg.files || !cfg.files.length) return null;
 
   var rs = getAudioRandStateForEvent(id, cfg);
   var poolRoll = weightedPickIndex(rs.weights); // 0..RANDOM_POOL_SIZE-1
@@ -2205,21 +2258,68 @@ function playEventSound(id) {
   var fileKey = String(file);
   if (rs.fileCounts[fileKey] == null) rs.fileCounts[fileKey] = 0;
   rs.fileCounts[fileKey] += 1;
-  var src = cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "") + "/" + String(file);
-  // сохраняем изменившиеся веса/счётчики (переживает F5)
-  saveAudioRandToStorage();
 
-  // ── ИСПРАВЛЕНИЕ ОЧЕРЕДИ ─────────────────────────────────────
-  // Только текущее (уже играет) + САМОЕ ПОСЛЕДНЕЕ событие.
-  // Все промежуточные звуки автоматически отбрасываются.
-  if (audioState.queue.length > 0) {
-    audioState.queue[audioState.queue.length - 1] = src; // заменяем последнее
-  } else {
-    audioState.queue.push(src);
+  saveAudioRandToStorage();
+  return cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "") + "/" + String(file);
+}
+
+async function playBufferBySrc(src, options) {
+  var ctx = ensureAudioContext();
+  if (!ctx || !src) return;
+
+  await resumeAudioContextIfNeeded();
+
+  var buffer = audioEngine.buffers[src];
+  if (!buffer) {
+    buffer = await decodeBufferFromSrc(src, 12000);
+    if (!buffer) return;
   }
 
-  pumpAudioQueue();
+  var source = null;
+  var gainNode = null;
+  try {
+    source = ctx.createBufferSource();
+    gainNode = ctx.createGain();
+    var extraVolume = (options && typeof options.volume === "number") ? options.volume : 1;
+    gainNode.gain.value = Math.max(0, Math.min(2, extraVolume));
+    source.buffer = buffer;
+    source.connect(gainNode);
+    gainNode.connect(audioEngine.masterGain);
+    if (options && typeof options.playbackRate === "number") {
+      source.playbackRate.value = Math.max(0.5, Math.min(2, options.playbackRate));
+    }
 
+    var cleaned = false;
+    function cleanup() {
+      if (cleaned) return;
+      cleaned = true;
+      try { source.onended = null; } catch (e) {}
+      try { source.disconnect(); } catch (e) {}
+      try { gainNode.disconnect(); } catch (e) {}
+      audioEngine.activeSources.delete(source);
+    }
+    source.onended = cleanup;
+
+    audioEngine.activeSources.add(source);
+    source.start(0);
+  } catch (e) {
+    try { if (source) source.stop(0); } catch (e2) {}
+    try { if (source) source.disconnect(); } catch (e3) {}
+    try { if (gainNode) gainNode.disconnect(); } catch (e4) {}
+    if (source) audioEngine.activeSources.delete(source);
+  }
+}
+
+function playEventSound(id, options) {
+  if (!audioState.enabled) return;
+  if (!audioState.unlocked) return;
+
+  var cfg = getAudioEventConfig(id);
+  if (!cfg || !cfg.folder || !cfg.files || !cfg.files.length) return;
+
+  var src = getRandomSoundByWeight(id, cfg);
+  if (!src) return;
+  playBufferBySrc(src, options);
 
   // Если окно вероятностей открыто — обновим его "на лету"
   try {
@@ -2382,11 +2482,20 @@ function renderAudioProbabilities() {
 }
 
 function reloadAudioCache() {
-  // Сбрасываем in-memory аудио и делаем полную перезапись Cache Storage
+  // Сбрасываем in-memory аудио и делаем полную перезапись Cache Storage.
   audioState.cache = {};
   audioState.queue = [];
   audioState.queuePlaying = false;
   audioState.preload = { started: false, done: false, total: 0, finished: 0, promise: null, currentSrc: null, phase: "" };
+  audioEngine.buffers = {};
+  audioEngine.inflight = {};
+  audioEngine.activeSources.forEach(function(srcNode) {
+    try { srcNode.stop(0); } catch (e) {}
+    try { srcNode.disconnect(); } catch (e2) {}
+  });
+  audioEngine.activeSources.clear();
+  audioEngine.initialized = false;
+  audioEngine.initPromise = null;
   renderAudioDebugTable();
   preloadAllAudioToCache({ overwrite: true, onlyMissing: false });
 }
@@ -4588,7 +4697,7 @@ function forceUnlockInput() {
   updateFullscreenButton();
 
   // Регистрируем SW, чтобы аудио читалось из Cache Storage (переживает F5)
-  registerAudioServiceWorker();
+  await registerAudioServiceWorker();
 
   // Иконка кэша на кнопке (🟥/🟨/🟩)
   updateCacheButtons();
