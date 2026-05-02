@@ -109,6 +109,9 @@
           <button class="btn btn-ghost btn-sm" data-role="btnCache" onclick="openAudioDebug()">🟥 Кэш</button>
           <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶</button>
         </div>
+        <div class="actions-bar">
+          <button class="btn btn-ghost btn-sm" onclick="location.href='./ios.html'">📱 Включить режим iOS</button>
+        </div>
   </div>
 
   <!-- ── ЭКРАН ЛОББИ ──────────────────────────────────── -->
@@ -272,7 +275,7 @@
       <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
     </div>
     <div class="actions-bar">
-      <button class="btn btn-ghost btn-sm" onclick="location.href='./ios.html'">📱 Режим iPhone</button>
+      <button class="btn btn-ghost btn-sm" onclick="location.href='./ios.html'">📱 Включить режим iOS</button>
     </div>
       <!-- Журнал ходов (сворачиваемый) -->
       <details class="log-panel">
@@ -325,6 +328,7 @@
 <div class="polling-dot" id="pollingDot"></div>
 
 <script src="./scripts/client.js"></script>
+<script src="./scripts/audio_pool.js"></script>
 <script src="./scripts/audio.js"></script>
 <script src="./scripts/engine.js"></script>
 
