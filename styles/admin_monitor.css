@@ -183,3 +183,29 @@
 .mon-bar-fill-gold  { display: block; height: 100%; border-radius: 3px; background: var(--gold); transition: width 0.4s; }
 .mon-bar-fill-red   { display: block; height: 100%; border-radius: 3px; background: var(--red); transition: width 0.4s; }
 .mon-error { color: #ff9999; font-size: 11px; padding: 10px; }
+
+/* ── КНОПКА КОПИРОВАНИЯ В МОНИТОРЕ ──── */
+.monitor-copy {
+  background: none; border: 1px solid rgba(26,159,212,0.25);
+  border-radius: 5px;
+  color: rgba(168,228,255,0.45);
+  font-size: 15px; cursor: pointer;
+  padding: 2px 7px; line-height: 1.4;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  font-family: 'Share Tech Mono', monospace;
+  letter-spacing: 0;
+}
+.monitor-copy:hover {
+  color: var(--foam);
+  border-color: rgba(26,159,212,0.55);
+  background: rgba(26,159,212,0.08);
+}
+.monitor-copy.copied {
+  color: #7dffb3;
+  border-color: rgba(46,204,113,0.5);
+  background: rgba(46,204,113,0.08);
+}
+.monitor-copy.copy-fail {
+  color: #ff9999;
+  border-color: rgba(231,76,60,0.5);
+}

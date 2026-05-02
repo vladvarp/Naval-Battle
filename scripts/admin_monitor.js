@@ -386,3 +386,157 @@ function closeMonitor() {
   if (overlay) overlay.classList.remove("show");
   if (_monitorInterval) { clearInterval(_monitorInterval); _monitorInterval = null; }
 }
+
+// ── КОПИРОВАНИЕ ДАННЫХ МОНИТОРА ──────────────────────────────
+
+async function copyMonitorData() {
+  var btn = document.getElementById("monitorCopyBtn");
+
+  var d;
+  try { d = await collectMonitorData(); } catch(e) { return; }
+
+  var lines = [];
+  var now = new Date().toLocaleString("ru-RU");
+  lines.push("═══════════════════════════════════");
+  lines.push("  NAVAL COMBAT — МОНИТОР СИСТЕМЫ");
+  lines.push("  " + now);
+  lines.push("═══════════════════════════════════");
+  lines.push("");
+
+  // ── Сессия
+  lines.push("── СОСТОЯНИЕ СЕССИИ ──");
+  lines.push("Комната:           " + (d.game.roomId || "—"));
+  lines.push("Никнейм:           " + (d.game.nickname || "—"));
+  lines.push("Слот:              " + (d.game.mySlot || "—"));
+  lines.push("Ввод заблокирован: " + (d.game.locked || "—"));
+  lines.push("Polling активен:   " + (d.game.pollActive || "—"));
+  lines.push("Режим Solo:        " + (d.game.soloActive || "—"));
+  if (d.game.soloActive === "ДА") {
+    lines.push("Solo фаза/ход:     " + d.game.soloPhase + " / " + d.game.soloTurn);
+  }
+  lines.push("Вид (поле):        " + (d.game.view || "—"));
+  lines.push("Сессия открыта:    " + fmtDuration(Date.now() - (_monitorStartTime || Date.now())));
+  lines.push("");
+
+  // ── Аудио RAM
+  lines.push("── АУДИО — ОПЕРАТИВНАЯ ПАМЯТЬ ──");
+  lines.push("Статус:            " + (d.audio.enabled ? "ВКЛ" : "ВЫКЛ"));
+  lines.push("Разблокирован:     " + (d.audio.unlocked ? "ДА" : "НЕТ"));
+  lines.push("Громкость:         " + (d.audio.volume || "—"));
+  lines.push("В памяти всего:    " + (d.audio.totalCached || 0) + " объектов");
+  lines.push("Активных:          " + (d.audio.activeCount || 0));
+  lines.push("Простаивает:       " + (d.audio.idleCount || 0));
+  lines.push("Оценка памяти:     " + fmtBytes(d.audio.estimatedMem));
+  lines.push("Очередь:           " + (d.audio.queueLen || 0) + (d.audio.queuePlaying ? " (играет)" : " (ожидает)"));
+  lines.push("");
+
+  // ── Preload
+  if (d.preload && (d.preload.started || d.preload.done)) {
+    lines.push("── ПРЕДЗАГРУЗКА АУДИО ──");
+    lines.push("Статус:    " + (d.preload.done ? "ЗАВЕРШЕНО" : (d.preload.started ? "ЗАГРУЗКА..." : "ОЖИДАНИЕ")));
+    lines.push("Прогресс:  " + d.preload.finished + "/" + d.preload.total + " (" + d.preload.pct + "%)");
+    if (!d.preload.done) {
+      lines.push("Фаза:      " + d.preload.phase);
+      lines.push("Сейчас:    " + String(d.preload.current).split("/").pop());
+    }
+    lines.push("");
+  }
+
+  // ── Cache Storage
+  lines.push("── CACHE STORAGE (Service Worker) ──");
+  if (!d.swCache.supported) {
+    lines.push("Статус: Не поддерживается / file://");
+  } else {
+    lines.push("Файлов в кэше:     " + d.swCache.totalCount + " шт.");
+    lines.push("Размер (заголовки):" + (d.swCache.totalSize > 0 ? fmtBytes(d.swCache.totalSize) : " нет данных content-length"));
+    lines.push("Кэши:              " + (d.swCache.cacheNames || []).join(", "));
+    if (d.swCache.byCategory) {
+      var cats = Object.keys(d.swCache.byCategory).sort();
+      cats.forEach(function(cat) {
+        var info = d.swCache.byCategory[cat];
+        var expected = 0;
+        for (var ei = 0; ei < AUDIO_EVENTS.length; ei++) {
+          if (AUDIO_EVENTS[ei].folder && AUDIO_EVENTS[ei].folder.split("/").pop() === cat) {
+            expected = AUDIO_EVENTS[ei].files ? AUDIO_EVENTS[ei].files.length : 0;
+          }
+        }
+        var line = "  " + cat + ": " + info.count + (expected ? "/" + expected : "");
+        if (info.size) line += " (" + fmtBytes(info.size) + ")";
+        lines.push(line);
+      });
+    }
+  }
+  lines.push("");
+
+  // ── Память браузера
+  if (d.perf && d.perf.heapUsed) {
+    lines.push("── ПАМЯТЬ БРАУЗЕРА (JS Heap) ──");
+    lines.push("Использовано:  " + fmtBytes(d.perf.heapUsed));
+    lines.push("Выделено:      " + fmtBytes(d.perf.heapTotal));
+    lines.push("Лимит:         " + fmtBytes(d.perf.heapLimit));
+    lines.push("Загрузка стр.: " + fmtMs(d.perf.pageLoad));
+    lines.push("DOM готов:     " + fmtMs(d.perf.domReady));
+    lines.push("Uptime:        " + fmtMs(d.perf.uptime));
+    lines.push("");
+  }
+
+  // ── Сеть
+  if (d.net && d.net.effectiveType) {
+    lines.push("── СЕТЬ ──");
+    lines.push("Тип соединения:    " + d.net.effectiveType);
+    lines.push("Скорость:          " + d.net.downlink);
+    lines.push("RTT:               " + d.net.rtt);
+    lines.push("Экономия трафика:  " + d.net.saveData);
+    lines.push("");
+  }
+
+  // ── localStorage
+  if (d.ls && d.ls.totalKeys != null) {
+    lines.push("── LOCAL STORAGE ──");
+    lines.push("Всего ключей:  " + d.ls.totalKeys);
+    lines.push("Размер данных: " + fmtBytes(d.ls.totalSize));
+    (d.ls.mbKeys || []).forEach(function(item) {
+      lines.push("  " + item.key + ": " + fmtBytes(item.size));
+    });
+    lines.push("");
+  }
+
+  // ── Активные аудио
+  if (d.audio && d.audio.activeList && d.audio.activeList.length) {
+    lines.push("── ИГРАЮТ СЕЙЧАС ──");
+    d.audio.activeList.forEach(function(item) {
+      lines.push("  " + item.src.split("/").slice(-2).join("/") + " (" + fmtBytes(item.est) + ")");
+    });
+    lines.push("");
+  }
+
+  lines.push("═══════════════════════════════════");
+
+  var text = lines.join("\n");
+
+  try {
+    await navigator.clipboard.writeText(text);
+    _showCopyFeedback(btn, "✓");
+  } catch(e) {
+    // fallback
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;opacity:0;top:0;left:0;";
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    try { document.execCommand("copy"); _showCopyFeedback(btn, "✓"); }
+    catch(e2) { _showCopyFeedback(btn, "✗"); }
+    document.body.removeChild(ta);
+  }
+}
+
+function _showCopyFeedback(btn, symbol) {
+  if (!btn) return;
+  var orig = btn.textContent;
+  btn.textContent = symbol;
+  btn.classList.add(symbol === "✓" ? "copied" : "copy-fail");
+  setTimeout(function() {
+    btn.textContent = orig;
+    btn.classList.remove("copied", "copy-fail");
+  }, 1400);
+}
