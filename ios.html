@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>NAVAL COMBAT</title>
 <link rel="stylesheet" href="./styles/main.css">
+<link rel="stylesheet" href="./styles/admin_monitor.css">
+
 </head>
 <body>
 
@@ -288,20 +290,32 @@
     <!-- Админ-панель -->
     <details class="admin-panel">
       <summary>⚙ АДМИНИСТРИРОВАНИЕ</summary>
-      <div class="admin-inner"> </div>
-      <button class="btn btn-ghost btn-sm" onclick="openAudioProb()">🎲 Вероятности звуков</button>
-      <button class="btn btn-ghost btn-sm" data-role="btnCache" onclick="openAudioDebug()">🟥 Кэш</button>
-      <div class="admin-inner"> </div>
-      <button class="btn btn-ghost btn-sm" onclick="forceUnlockInput()"style="background:rgba(46,204,113,0.2); border-color:#2ecc71; color:#7dffb3;">
-        🔓 РАЗБЛОКИРОВАТЬ ВВОД
-      </button>
-      <div class="admin-inner">
+      <div class="admin-panel-body">
 
-        <div class="field-group">
-          <label>ПАРОЛЬ АДМИНИСТРАТОРА</label>
-          <input type="password" id="adminPassword" placeholder="Пароль">
+        <div class="admin-section-label">ДИАГНОСТИКА</div>
+        <div class="admin-btn-group">
+          <button class="btn btn-ghost btn-sm" onclick="openMonitor()">📡 Монитор системы</button>
+          <button class="btn btn-ghost btn-sm" data-role="btnCache" onclick="openAudioDebug()">📦 Аудио-кэш</button>
+          <button class="btn btn-ghost btn-sm" onclick="openAudioProb()">🎲 Вероятности</button>
         </div>
-        <button class="btn btn-danger btn-sm" onclick="restartGame()">🔄 Удалить комнату</button>
+
+        <div class="admin-divider"></div>
+        <div class="admin-section-label">УПРАВЛЕНИЕ</div>
+        <div class="admin-btn-group">
+          <button class="btn btn-ghost btn-sm" onclick="forceUnlockInput()" style="background:rgba(46,204,113,0.15);border-color:rgba(46,204,113,0.5);color:#7dffb3;">
+            🔓 Разблокировать ввод
+          </button>
+        </div>
+
+        <div class="admin-divider"></div>
+        <div class="admin-section-label">ОПАСНАЯ ЗОНА</div>
+        <div class="field-group" style="margin-bottom:0;">
+          <label>ПАРОЛЬ АДМИНИСТРАТОРА</label>
+          <input type="password" id="adminPassword" placeholder="Введите пароль">
+        </div>
+        <div class="admin-btn-group">
+          <button class="btn btn-danger btn-sm" onclick="restartGame()">🔄 Удалить комнату</button>
+        </div>
 
       </div>
     </details>
@@ -326,9 +340,25 @@
 <!-- Индикатор polling -->
 <div class="polling-dot" id="pollingDot"></div>
 
+<!-- ── МОНИТОР СИСТЕМЫ ─────────────────────────────────────── -->
+<div class="monitor-overlay" id="monitorOverlay">
+  <div class="monitor-card">
+    <div class="monitor-header">
+      <div class="monitor-title">📡 МОНИТОР СИСТЕМЫ</div>
+      <div class="monitor-meta">
+        <div class="monitor-live-dot"></div>
+        <span class="monitor-ts" id="monitorTimestamp">обновление...</span>
+        <button class="monitor-close" onclick="closeMonitor()">✕</button>
+      </div>
+    </div>
+    <div id="monitorBody"></div>
+  </div>
+</div>
+
 <script src="./scripts/client.js"></script>
 <script src="./scripts/audio_pool.js"></script>
 <script src="./scripts/audio_ios.js"></script>
+<script src="./scripts/admin_monitor.js"></script>
 <script src="./scripts/engine.js"></script>
 </body>
 </html>
