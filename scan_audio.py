@@ -5,7 +5,7 @@ from pathlib import Path
 # Пути
 SCRIPT_DIR = Path(__file__).parent
 AUDIO_DIR = SCRIPT_DIR / "audio"
-INDEX_FILE = SCRIPT_DIR / "index.html"
+INDEX_FILE = SCRIPT_DIR / "./scripts/audio_pool.js"
 
 # Проверки
 if not AUDIO_DIR.exists():
