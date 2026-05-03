@@ -1,10 +1,10 @@
-// Service Worker for Naval Battle audio caching
-// Cache Storage is controlled from the page code; SW serves cached audio fast.
+// Service Worker: отдаёт mp3 из Cache Storage (в т.ч. офлайн для <audio> и fetch).
+// Скрипт в корне деплоя, scope "./" — иначе нельзя перехватывать ./audio/*.mp3
+// (scope не может быть «выше» каталога файла worker’а).
 
 const AUDIO_CACHE_NAME = "mb-audio-cache-v1";
 
 self.addEventListener("install", (event) => {
-  // Activate immediately
   self.skipWaiting();
 });
 
@@ -30,9 +30,6 @@ self.addEventListener("fetch", (event) => {
     const cache = await caches.open(AUDIO_CACHE_NAME);
     const cached = await cache.match(req, { ignoreSearch: true });
     if (cached) return cached;
-
-    // Fallback: network (do not populate here; page controls overwrite rules)
     return fetch(req);
   })());
 });
-

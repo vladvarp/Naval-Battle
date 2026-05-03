@@ -290,11 +290,8 @@ async function registerAudioServiceWorker() {
   if (isFileProtocol()) return;
   if (!("serviceWorker" in navigator)) return;
   try {
-    // sw.js лежит в папке scripts → scope тоже должен быть внутри /scripts/
-    await navigator.serviceWorker.register("./scripts/audio_engine/sw.js", {
-      scope: "./scripts/audio_engine/"          // ← вот это главное исправление
-    });
-    console.log("✅ Service Worker зарегистрирован (scope: ./scripts/)");
+    await navigator.serviceWorker.register("./sw.js", { scope: "./" });
+    console.log("✅ Service Worker зарегистрирован (./sw.js, scope: ./)");
   } catch (e) {
     console.warn("⚠️ Не удалось зарегистрировать Service Worker:", e);
   }
