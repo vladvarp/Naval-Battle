@@ -17,6 +17,10 @@ var audioEngine = {
   pendingInit: false
 };
 
+const CRITICAL_EVENTS = ["shoot", "hitEnemy", "hitMe", "miss", "enemyMiss", 
+  "sunkEnemy", "sunkMe", "turnMine", "turnEnemy", 
+  "gameStart", "gameWin", "gameLose"];
+
 function isIosWebkit() {
   try {
     var ua = navigator.userAgent || "";
@@ -164,43 +168,23 @@ async function preloadBuffers(srcs, opts) {
 
 async function initWebAudio(opts) {
   if (isIosWebkit() && !audioState.unlocked) {
-    // До первого жеста пользователя на iOS не пытаемся создавать/разогревать контекст:
-    // это часто приводит к "немому" состоянию Safari.
     audioEngine.pendingInit = true;
     return false;
   }
 
   if (audioEngine.initPromise) return audioEngine.initPromise;
-  var trackPreloadState = !!(opts && opts.trackPreloadState);
 
   audioEngine.initPromise = (async function() {
     var ctx = ensureAudioContext();
     if (!ctx) return false;
 
-    var srcs = buildPrioritizedAudioSrcList();
-    var phase1Count = srcs && typeof srcs._primeCount === "number" ? srcs._primeCount : 0;
+    // ←←← ГЛАВНОЕ ИЗМЕНЕНИЕ: грузим в память только важные звуки
+    await preloadCriticalBuffers();
 
-    if (trackPreloadState) {
-      audioState.preload.started = true;
-      audioState.preload.done = false;
-      audioState.preload.promise = null;
-      audioState.preload.total = srcs.length;
-      audioState.preload.finished = 0;
-      audioState.preload.currentSrc = null;
-      audioState.preload.phase = "prime";
-    }
-
-    await preloadBuffers(srcs, {
-      timeoutMs: 20000,
-      concurrency: audioEngine.maxConcurrency,
-      trackProgress: trackPreloadState,
-      phase1Count: phase1Count
-    });
-
-    if (trackPreloadState) {
-      audioState.preload.currentSrc = null;
+    if (opts && opts.trackPreloadState) {
       audioState.preload.done = true;
     }
+
     audioEngine.pendingInit = false;
     audioEngine.initialized = true;
     applyAudioOutputState();
@@ -208,6 +192,39 @@ async function initWebAudio(opts) {
   })();
 
   return audioEngine.initPromise;
+}
+
+async function preloadCriticalBuffers() {
+  var srcs = [];
+  var filesPerCategory = 4;     // ← сколько случайных файлов брать из каждой категории
+                                // можешь поменять на 3 или 5
+
+  AUDIO_EVENTS.forEach(function(cfg) {
+    if (!CRITICAL_EVENTS.includes(cfg.id)) return;
+    if (!cfg.files || cfg.files.length === 0) return;
+
+    var folder = cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "");
+
+    // Перемешиваем файлы случайно
+    var shuffled = cfg.files.slice();
+    for (var i = shuffled.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    // Берём первые N после перемешивания (т.е. случайные)
+    for (var k = 0; k < Math.min(filesPerCategory, shuffled.length); k++) {
+      srcs.push(folder + "/" + String(shuffled[k]));
+    }
+  });
+
+  await preloadBuffers(srcs, { 
+    timeoutMs: 15000, 
+    concurrency: 6, 
+    trackProgress: false 
+  });
+
+  console.log(`✅ iOS: В память загружено ${srcs.length} случайных критических звуков (${filesPerCategory} из каждой категории)`);
 }
 
 function getAudioRandStateForEvent(eventId, cfg) {
