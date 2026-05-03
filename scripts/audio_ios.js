@@ -179,13 +179,7 @@ async function initWebAudio(opts) {
     var ctx = ensureAudioContext();
     if (!ctx) return false;
 
-    // ←←← ГЛАВНОЕ ИЗМЕНЕНИЕ: грузим в память только важные звуки
-    await preloadCriticalBuffers();
-
-    if (opts && opts.trackPreloadState) {
-      audioState.preload.done = true;
-    }
-
+    // Ничего не предзагружаем в память при старте
     audioEngine.pendingInit = false;
     audioEngine.initialized = true;
     applyAudioOutputState();
@@ -193,34 +187,6 @@ async function initWebAudio(opts) {
   })();
 
   return audioEngine.initPromise;
-}
-
-async function preloadCriticalBuffers() {
-  audioEngine.categoryBuffers = {};   // очищаем предыдущее
-
-  for (var i = 0; i < CRITICAL_EVENTS.length; i++) {
-    var id = CRITICAL_EVENTS[i];
-    var cfg = getAudioEventConfig(id);
-    if (!cfg || !cfg.files || cfg.files.length === 0) continue;
-
-    var folder = cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "");
-    var srcs = [];
-
-    // Берём ровно 2 случайных файла по весам
-    for (var k = 0; k < 2; k++) {
-      var src = getRandomSoundByWeight(id, cfg);
-      if (src && !srcs.includes(src)) srcs.push(src);
-    }
-
-    audioEngine.categoryBuffers[id] = srcs;
-
-    // Загружаем их в память
-    for (var j = 0; j < srcs.length; j++) {
-      await decodeBufferFromSrc(srcs[j], 10000);
-    }
-  }
-
-  console.log("✅ iOS: В памяти строго по 2 случайных файла на категорию (~24 буфера)");
 }
 
 function getAudioRandStateForEvent(eventId, cfg) {
@@ -693,8 +659,7 @@ async function playBufferBySrc(src, options) {
   var ctx = ensureAudioContext();
   if (!ctx || !src) return false;
 
-  var ready = await resumeAudioContextIfNeeded();
-  if (!ready) return false;
+  await resumeAudioContextIfNeeded();
 
   var buffer = audioEngine.buffers[src];
   if (!buffer) {
