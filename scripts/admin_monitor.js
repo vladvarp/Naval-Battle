@@ -141,42 +141,51 @@ async function collectMonitorData() {
         data.audioIos.ctxState      = ctx ? ctx.state : "не создан";
         data.audioIos.ctxSampleRate = ctx ? ctx.sampleRate + " Гц" : "—";
         data.audioIos.ctxTime       = ctx ? fmtSec(ctx.currentTime) : "—";
-        data.audioIos.ctxLatency    = ctx && ctx.baseLatency != null
-          ? (ctx.baseLatency * 1000).toFixed(1) + " мс" : "—";
-        data.audioIos.ctxChannels   = ctx && ctx.destination
-          ? ctx.destination.channelCount : "—";
+        data.audioIos.ctxLatency    = ctx && ctx.baseLatency != null ? (ctx.baseLatency * 1000).toFixed(1) + " мс" : "—";
+        data.audioIos.ctxChannels   = ctx && ctx.destination ? ctx.destination.channelCount : "—";
+        data.audioIos.masterGain    = ae.masterGain && ae.masterGain.gain ? ae.masterGain.gain.value.toFixed(3) : "нет";
 
-        // MasterGain
-        data.audioIos.masterGain = ae.masterGain && ae.masterGain.gain
-          ? ae.masterGain.gain.value.toFixed(3) : "нет";
-
-        // Декодированные AudioBuffer → реальная PCM-память
+        // ── ДЕТАЛЬНЫЙ СПИСОК БУФЕРОВ В ПАМЯТИ PCM float32 ──
         var bufKeys = Object.keys(ae.buffers || {});
         var pcmBytes = 0;
+        data.audioIos.buffersDetail = [];
+
         bufKeys.forEach(function(src) {
           var buf = ae.buffers[src];
-          // float32 × каналы × семплы
-          if (buf && buf.length && buf.numberOfChannels)
-            pcmBytes += buf.length * buf.numberOfChannels * 4;
+          if (!buf || !buf.length) return;
+
+          var bytes = buf.length * (buf.numberOfChannels || 1) * 4;
+          pcmBytes += bytes;
+
+          var shortName = src.split('/').pop() || src;
+          if (shortName.length > 38) shortName = '…' + shortName.slice(-35);
+
+          var category = "unknown";
+          if (src.includes("/shoot/"))      category = "shoot";
+          else if (src.includes("/hit"))    category = "hit";
+          else if (src.includes("/sunk"))   category = "sunk";
+          else if (src.includes("/miss"))   category = "miss";
+          else if (src.includes("/turn"))   category = "turn";
+          else if (src.includes("/game"))   category = "game";
+
+          data.audioIos.buffersDetail.push({
+            shortName: shortName,
+            category: category,
+            duration: buf.duration ? buf.duration.toFixed(2) + "с" : "—",
+            channels: buf.numberOfChannels || 1,
+            frames: buf.length || 0,
+            pcmKB: Math.round(bytes / 1024) + " КБ"
+          });
         });
+
+        data.audioIos.buffersDetail.sort(function(a, b) { return b.pcmBytes - a.pcmBytes; });
+
         data.audioIos.buffersDecoded  = bufKeys.length;
         data.audioIos.buffersPcmBytes = pcmBytes;
-
-        // In-flight (fetch + decodeAudioData в процессе)
-        data.audioIos.inflightCount = Object.keys(ae.inflight || {}).length;
-
-        // AudioBufferSourceNode активные прямо сейчас
-        data.audioIos.activeSources  = ae.activeSources ? ae.activeSources.size : 0;
-        data.audioIos.maxConcurrency = ae.maxConcurrency || "—";
-
-        // Флаги
-        data.audioIos.initialized = !!ae.initialized;
-        data.audioIos.pendingInit = !!ae.pendingInit;
-
-        // HTMLAudio-кэш в ios (audioState.cache — используется для совместимости в preload)
-        data.audioIos.htmlCacheCount = Object.keys(
-          (typeof audioState !== "undefined" && audioState.cache) ? audioState.cache : {}
-        ).length;
+        data.audioIos.inflightCount   = Object.keys(ae.inflight || {}).length;
+        data.audioIos.activeSources   = ae.activeSources ? ae.activeSources.size : 0;
+        data.audioIos.initialized     = !!ae.initialized;
+        data.audioIos.pendingInit     = !!ae.pendingInit;
       }
     } catch(e) { data.audioIos.error = String(e); }
   }
@@ -363,6 +372,25 @@ async function renderMonitor() {
         { k: "Макс. одновременно", v: ai.maxConcurrency },
         { k: "HTMLAudio-объектов (legacy)", v: ai.htmlCacheCount, valCls: "mon-dim" },
       ]);
+      // ── ДЕТАЛЬНЫЙ СПИСОК БУФЕРОВ PCM float32 ──
+      if (ai.buffersDetail && ai.buffersDetail.length) {
+        html += '<div class="mon-section">';
+        html += '<div class="mon-section-title">🔬 Что именно занимает память (PCM float32)</div>';
+        html += '<table class="mon-table" style="font-size:10px;line-height:1.3">';
+        html += '<thead><tr><th style="width:45%">Файл</th><th>Кат.</th><th>Длит.</th><th>Кан.</th><th style="text-align:right">Размер</th></tr></thead><tbody>';
+        
+        ai.buffersDetail.forEach(function(b) {
+          html += `<tr>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(b.shortName)}</td>
+            <td><span class="mon-dim">${b.category}</span></td>
+            <td>${b.duration}</td>
+            <td>${b.channels}ch</td>
+            <td style="text-align:right" class="mon-gold">${b.pcmKB}</td>
+          </tr>`;
+        });
+        
+        html += '</tbody></table></div>';
+      }
     }
 
   } else if (d.audioStd) {
