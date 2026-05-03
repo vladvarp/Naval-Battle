@@ -290,8 +290,14 @@ async function registerAudioServiceWorker() {
   if (isFileProtocol()) return;
   if (!("serviceWorker" in navigator)) return;
   try {
-    await navigator.serviceWorker.register("./scripts/sw.js", { scope: "./" });
-  } catch (e) {}
+    // sw.js лежит в папке scripts → scope тоже должен быть внутри /scripts/
+    await navigator.serviceWorker.register("./scripts/sw.js", {
+      scope: "./scripts/"          // ← вот это главное исправление
+    });
+    console.log("✅ Service Worker зарегистрирован (scope: ./scripts/)");
+  } catch (e) {
+    console.warn("⚠️ Не удалось зарегистрировать Service Worker:", e);
+  }
 }
 
 async function getAudioCacheUrlSet() {
