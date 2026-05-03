@@ -8,6 +8,7 @@
 
 var _monitorInterval = null;
 var _monitorStartTime = Date.now();
+var _pcmDetailsOpen = false;
 
 // ── УТИЛИТЫ ──────────────────────────────────────────────────
 
@@ -302,6 +303,12 @@ async function renderMonitor() {
   var container = document.getElementById("monitorBody");
   if (!container) return;
 
+  // ── Сохраняем состояние PCM-блока перед перерисовкой ──
+  var existingDetails = container.querySelector('.pcm-details') || document.getElementById('pcmDetails');
+  if (existingDetails) {
+    _pcmDetailsOpen = existingDetails.open;
+  }
+
   var d;
   try { d = await collectMonitorData(); }
   catch(e) { container.innerHTML = '<div class="mon-error">Ошибка: ' + escHtml(String(e)) + '</div>'; return; }
@@ -372,10 +379,12 @@ async function renderMonitor() {
         { k: "Макс. одновременно", v: ai.maxConcurrency },
         { k: "HTMLAudio-объектов (legacy)", v: ai.htmlCacheCount, valCls: "mon-dim" },
       ]);
-      // ── ДЕТАЛЬНЫЙ СПИСОК БУФЕРОВ PCM float32 ──
+
+      // ── ДЕТАЛЬНЫЙ СПИСОК БУФЕРОВ (с сохранением открытого/закрытого состояния) ──
       if (ai.buffersDetail && ai.buffersDetail.length) {
-        html += '<div class="mon-section">';
-        html += '<div class="mon-section-title">🔬 Что именно занимает память (PCM float32)</div>';
+        var openAttr = _pcmDetailsOpen ? ' open' : '';
+        html += `<details id="pcmDetails" class="mon-section pcm-details"${openAttr}>`;
+        html += `<summary class="mon-section-title">🔬 Что именно занимает память (PCM float32) <span class="mon-dim">(${ai.buffersDetail.length} буферов)</span></summary>`;
         html += '<table class="mon-table" style="font-size:10px;line-height:1.3">';
         html += '<thead><tr><th style="width:45%">Файл</th><th>Кат.</th><th>Длит.</th><th>Кан.</th><th style="text-align:right">Размер</th></tr></thead><tbody>';
         
@@ -389,10 +398,9 @@ async function renderMonitor() {
           </tr>`;
         });
         
-        html += '</tbody></table></div>';
+        html += '</tbody></table></details>';
       }
     }
-
   } else if (d.audioStd) {
     // ───────────── Стандарт: HTMLAudioElement ─────────────
     var std = d.audioStd;
@@ -497,6 +505,15 @@ async function renderMonitor() {
   }
 
   container.innerHTML = html;
+
+  // Прикрепляем обработчик toggle
+  var details = document.getElementById("pcmDetails");
+  if (details) {
+    details.addEventListener('toggle', function () {
+      _pcmDetailsOpen = this.open;
+    });
+  }
+
   var ts = document.getElementById("monitorTimestamp");
   if (ts) ts.textContent = "обновлено " + new Date().toLocaleTimeString("ru-RU");
 }

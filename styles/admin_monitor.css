@@ -209,3 +209,54 @@
   color: #ff9999;
   border-color: rgba(231,76,60,0.5);
 }
+
+/* ── ДЕТАЛЬНЫЙ СПИСОК БУФЕРОВ PCM float32 (по умолчанию свёрнута) ──── */
+  .monitor-card .pcm-details {
+  background: rgba(2,13,24,0.5);
+  border: 1px solid rgba(26,159,212,0.1);
+  border-radius: 8px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.monitor-card .pcm-details summary.mon-section-title {
+  cursor: pointer;
+  user-select: none;
+  padding: 12px 14px;
+  margin: 0;
+  border-bottom: 1px solid rgba(26,159,212,0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+}
+
+.monitor-card .pcm-details summary.mon-section-title:hover {
+  background: rgba(240,192,64,0.05);
+}
+
+/* скрываем стандартный маркер */
+.monitor-card .pcm-details summary.mon-section-title::-webkit-details-marker,
+.monitor-card .pcm-details summary.mon-section-title::marker {
+  display: none;
+}
+
+/* кастомная стрелка */
+.monitor-card .pcm-details summary.mon-section-title::after {
+  content: "▶";
+  font-size: 11px;
+  transition: transform 0.25s ease;
+  opacity: 0.7;
+  margin-left: auto;
+}
+
+.monitor-card .pcm-details[open] summary.mon-section-title::after {
+  transform: rotate(90deg);
+}
+
+/* контент таблицы */
+.monitor-card .pcm-details > table {
+  padding: 0 14px 14px 14px;
+  width: 100%;
+  box-sizing: border-box;
+}

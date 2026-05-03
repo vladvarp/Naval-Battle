@@ -289,7 +289,7 @@ function unlockAudioOnce() {
     if (audioEngine.pendingInit || !audioEngine.initialized) initWebAudio();
   });
   // Лёгкий прайм часто используемых категорий (без блокировки UI).
-  preloadAudioForEventIds(["shoot","gameStart","gameWin","gameLose"]);
+  preloadAudioForEventIds();
 }
 
 document.addEventListener("pointerdown", unlockAudioOnce, { once: true, passive: true });
