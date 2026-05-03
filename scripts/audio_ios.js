@@ -14,7 +14,8 @@ var audioEngine = {
   initialized: false,
   initPromise: null,
   maxConcurrency: 8,
-  pendingInit: false
+  pendingInit: false,
+  categoryBuffers: {}   // { "shoot": ["audio/shoot/7.mp3", "audio/shoot/23.mp3"], ... }
 };
 
 const CRITICAL_EVENTS = ["shoot", "hitEnemy", "hitMe", "miss", "enemyMiss", 
@@ -195,36 +196,31 @@ async function initWebAudio(opts) {
 }
 
 async function preloadCriticalBuffers() {
-  var srcs = [];
-  var filesPerCategory = 4;     // ← сколько случайных файлов брать из каждой категории
-                                // можешь поменять на 3 или 5
+  audioEngine.categoryBuffers = {};   // очищаем предыдущее
 
-  AUDIO_EVENTS.forEach(function(cfg) {
-    if (!CRITICAL_EVENTS.includes(cfg.id)) return;
-    if (!cfg.files || cfg.files.length === 0) return;
+  for (var i = 0; i < CRITICAL_EVENTS.length; i++) {
+    var id = CRITICAL_EVENTS[i];
+    var cfg = getAudioEventConfig(id);
+    if (!cfg || !cfg.files || cfg.files.length === 0) continue;
 
     var folder = cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "");
+    var srcs = [];
 
-    // Перемешиваем файлы случайно
-    var shuffled = cfg.files.slice();
-    for (var i = shuffled.length - 1; i > 0; i--) {
-      var j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    // Берём ровно 2 случайных файла по весам
+    for (var k = 0; k < 2; k++) {
+      var src = getRandomSoundByWeight(id, cfg);
+      if (src && !srcs.includes(src)) srcs.push(src);
     }
 
-    // Берём первые N после перемешивания (т.е. случайные)
-    for (var k = 0; k < Math.min(filesPerCategory, shuffled.length); k++) {
-      srcs.push(folder + "/" + String(shuffled[k]));
+    audioEngine.categoryBuffers[id] = srcs;
+
+    // Загружаем их в память
+    for (var j = 0; j < srcs.length; j++) {
+      await decodeBufferFromSrc(srcs[j], 10000);
     }
-  });
+  }
 
-  await preloadBuffers(srcs, { 
-    timeoutMs: 15000, 
-    concurrency: 6, 
-    trackProgress: false 
-  });
-
-  console.log(`✅ iOS: В память загружено ${srcs.length} случайных критических звуков (${filesPerCategory} из каждой категории)`);
+  console.log("✅ iOS: В памяти строго по 2 случайных файла на категорию (~24 буфера)");
 }
 
 function getAudioRandStateForEvent(eventId, cfg) {
@@ -717,6 +713,7 @@ async function playBufferBySrc(src, options) {
       source.buffer = buffer;
       source.connect(gainNode);
       gainNode.connect(audioEngine.masterGain);
+
       if (options && typeof options.playbackRate === "number") {
         source.playbackRate.value = Math.max(0.5, Math.min(2, options.playbackRate));
       }
@@ -725,12 +722,23 @@ async function playBufferBySrc(src, options) {
       function cleanup(ok) {
         if (cleaned) return;
         cleaned = true;
+
+        // Удаляем проигранный файл из памяти
+        if (src && audioEngine.buffers[src]) {
+          delete audioEngine.buffers[src];
+        }
+
+        // Сразу грузим новый случайный файл из этой категории
+        var cfg = getAudioEventConfigFromSrc(src);
+        if (cfg) preloadNewRandomForCategory(cfg.id);
+
         try { source.onended = null; } catch (e) {}
         try { source.disconnect(); } catch (e2) {}
         try { gainNode.disconnect(); } catch (e3) {}
         audioEngine.activeSources.delete(source);
         resolve(!!ok);
       }
+
       source.onended = function() { cleanup(true); };
       source.addEventListener("ended", function() { cleanup(true); }, { once: true });
 
@@ -744,6 +752,24 @@ async function playBufferBySrc(src, options) {
       resolve(false);
     }
   });
+}
+
+function getAudioEventConfigFromSrc(src) {
+  for (var i = 0; i < AUDIO_EVENTS.length; i++) {
+    var cfg = AUDIO_EVENTS[i];
+    var folder = cfg.folder.replace(/\\/g, "/").replace(/\/+$/g, "");
+    if (src && src.startsWith(folder + "/")) return cfg;
+  }
+  return null;
+}
+
+async function preloadNewRandomForCategory(id) {
+  var cfg = getAudioEventConfig(id);
+  if (!cfg || !cfg.files || !cfg.files.length) return;
+  var newSrc = getRandomSoundByWeight(id, cfg);
+  if (newSrc && !audioEngine.buffers[newSrc]) {
+    await decodeBufferFromSrc(newSrc, 8000);
+  }
 }
 
 async function pumpAudioQueue() {
