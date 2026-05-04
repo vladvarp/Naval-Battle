@@ -88,7 +88,7 @@
 
 <!-- ШАПКА -->
 <header>
-  <div class="logo">NAVAL⚓<span>COMBAT</span><span class="logo-ios">iOS</span>  </div>
+  <div class="logo">NAVAL⚓<span>COMBAT</span><span class="logo-ios">v1</span>  </div>
   <div class="subtitle"></div>
 </header>
 
@@ -107,10 +107,8 @@
     </div>
         <!-- Кнопки действий -->
         <div class="actions-bar">
-          <button class="btn btn-ghost btn-sm" onclick="location.href='./index.html'">🖥 Выключить режим iOS</button>
-        </div>
-        <div class="actions-bar">
           <button class="btn btn-ghost btn-sm" data-role="btnCache" onclick="openAudioDebug()">🟥 Кэш</button>
+          <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶</button>
         </div>
   </div>
 
@@ -138,6 +136,9 @@
 
     <div style="width:100%;max-width:520px;text-align:center;">
       <button class="btn btn-ghost btn-sm" style="width:auto;padding:8px 20px;" onclick="backToLogin()">← СМЕНИТЬ НИК</button>
+    </div>
+    <div style="width:100%;max-width:520px;text-align:center;">
+      <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶</button>
     </div>
 
   </div>
@@ -185,6 +186,7 @@
       <div class="room-code" id="waitingRoomCode">—</div>
       <div> </div>
       <div class="actions-bar">
+        <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶</button>
         <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
       </div>
     </div>
@@ -266,10 +268,8 @@
     <!-- Кнопки действий -->
     <div class="actions-bar">
       <button class="btn btn-ghost btn-sm" id="btnSound" onclick="toggleSound()">🔊 ВКЛ</button>
+      <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶</button>
       <button class="btn btn-ghost btn-sm" onclick="leaveGame()">🚪 Выйти</button>
-    </div>
-    <div class="actions-bar">
-      <button class="btn btn-ghost btn-sm" onclick="location.href='./index.html'">🖥 Выключить режим iOS</button>
     </div>
       <!-- Журнал ходов (сворачиваемый) -->
       <details class="log-panel">
@@ -290,6 +290,7 @@
           <button class="btn btn-ghost btn-sm" onclick="openMonitor()">📡 Монитор системы</button>
           <button class="btn btn-ghost btn-sm" data-role="btnCache" onclick="openAudioDebug()">📦 Аудио-кэш</button>
           <button class="btn btn-ghost btn-sm" onclick="openAudioProb()">🎲 Вероятности</button>
+          <button class="btn btn-ghost btn-sm" onclick="location.href='./index.html'">🔉 Audio v2</button>
         </div>
 
         <div class="admin-divider"></div>
@@ -351,8 +352,9 @@
 
 <script src="./scripts/client.js"></script>
 <script src="./scripts/audio_engine/audio_pool.js"></script>
-<script src="./scripts/audio_engine/audio_ios.js"></script>
+<script src="./scripts/audio_engine/audio_v1.js"></script>
 <script src="./scripts/admin_monitor.js"></script>
 <script src="./scripts/engine.js"></script>
+
 </body>
 </html>
