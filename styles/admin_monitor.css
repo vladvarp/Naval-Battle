@@ -58,6 +58,87 @@
   margin-bottom: 2px;
 }
 
+/* Список комнат (опасная зона) */
+.admin-rooms-panel {
+  margin-top: 4px;
+  padding: 12px 14px;
+  background: rgba(2,13,24,0.55);
+  border: 1px solid rgba(231,76,60,0.22);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.admin-rooms-hint {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: rgba(168,228,255,0.45);
+  margin-bottom: 8px;
+}
+.admin-rooms-hint:empty {
+  display: none;
+}
+.admin-rooms-empty {
+  font-size: 11px;
+  color: rgba(168,228,255,0.5);
+  padding: 8px 0;
+}
+.admin-rooms-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.admin-rooms-table thead th {
+  text-align: left;
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: rgba(168,228,255,0.4);
+  padding: 0 8px 8px 0;
+  border-bottom: 1px solid rgba(26,159,212,0.15);
+  font-weight: 600;
+}
+.admin-rooms-table tbody td {
+  padding: 10px 8px 10px 0;
+  vertical-align: middle;
+  border-bottom: 1px solid rgba(26,159,212,0.08);
+  color: rgba(230,245,255,0.92);
+  line-height: 1.35;
+}
+.admin-rooms-table tbody tr:last-child td { border-bottom: none; }
+.admin-rooms-id {
+  font-family: "Share Tech Mono", ui-monospace, monospace;
+  font-weight: 600;
+  color: var(--foam);
+  white-space: nowrap;
+}
+.admin-rooms-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--gold);
+}
+.admin-rooms-dim { color: rgba(168,228,255,0.35); }
+.admin-rooms-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  background: rgba(46,204,113,0.12);
+  border: 1px solid rgba(46,204,113,0.35);
+  color: #7dffb3;
+  vertical-align: middle;
+}
+.admin-rooms-table .btn.admin-rooms-del {
+  flex: none;
+  min-width: auto;
+  padding: 6px 12px;
+  font-size: 10px;
+}
+.admin-rooms-list { overflow-x: auto; }
+
 /* Оверлей монитора системы */
 .monitor-overlay {
   position: fixed; inset: 0; z-index: 2100;
@@ -347,3 +428,118 @@
 .pcm-cat-badge.pcm-cat-miss { border-color: rgba(52,152,219,0.35); background: rgba(52,152,219,0.08); color: #85c1e9; }
 .pcm-cat-badge.pcm-cat-game { border-color: rgba(155,89,182,0.35); background: rgba(155,89,182,0.08); color: #d7bde2; }
 .pcm-cat-badge.pcm-cat-unknown { opacity: 0.75; }
+
+/* Всплывающие уведомления (пароль админки, ошибки API) */
+.app-toast-root {
+  position: fixed;
+  left: 50%;
+  bottom: max(24px, env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 3200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  max-width: min(420px, calc(100vw - 32px));
+}
+.app-toast {
+  pointer-events: none;
+  padding: 14px 20px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06);
+  border: 1px solid rgba(26,159,212,0.35);
+  background: rgba(4,22,42,0.96);
+  color: rgba(230,245,255,0.95);
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+  transition: opacity 0.28s ease, transform 0.28s ease;
+}
+.app-toast--visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.app-toast--info {
+  border-color: rgba(26,159,212,0.45);
+  color: rgba(168,228,255,0.95);
+}
+.app-toast--warning {
+  border-color: rgba(240,192,64,0.55);
+  background: linear-gradient(165deg, rgba(40,32,12,0.97) 0%, rgba(12,28,48,0.98) 100%);
+  color: #f4e4a8;
+}
+.app-toast--error {
+  border-color: rgba(231,76,60,0.55);
+  background: linear-gradient(165deg, rgba(48,14,12,0.96) 0%, rgba(10,22,38,0.98) 100%);
+  color: #ffc9c4;
+}
+.app-toast--ok {
+  border-color: rgba(46,204,113,0.45);
+  background: linear-gradient(165deg, rgba(8,36,24,0.95) 0%, rgba(8,24,40,0.98) 100%);
+  color: #b8f5d0;
+}
+
+/* Модальное подтверждение (удаление комнаты) */
+.admin-confirm-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(2, 10, 20, 0.88);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.admin-confirm-overlay.show {
+  display: flex;
+}
+.admin-confirm-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 22px 24px 20px;
+  border-radius: 14px;
+  border: 1px solid rgba(231, 76, 60, 0.35);
+  background: linear-gradient(165deg, rgba(36, 12, 10, 0.96) 0%, rgba(6, 22, 38, 0.99) 100%);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 24px 64px rgba(0, 0, 0, 0.65),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.admin-confirm-title {
+  font-family: "Russo One", sans-serif;
+  font-size: 13px;
+  letter-spacing: 2.5px;
+  color: #ffb4a8;
+  margin-bottom: 12px;
+}
+.admin-confirm-message {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: rgba(230, 245, 255, 0.95);
+  font-family: "Share Tech Mono", ui-monospace, monospace;
+  word-break: break-all;
+}
+.admin-confirm-detail {
+  margin: 0 0 20px;
+  font-size: 11px;
+  line-height: 1.45;
+  letter-spacing: 0.04em;
+  color: rgba(168, 228, 255, 0.5);
+}
+.admin-confirm-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.admin-confirm-actions .btn {
+  flex: 1;
+  min-width: 120px;
+}

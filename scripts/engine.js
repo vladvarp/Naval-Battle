@@ -258,6 +258,75 @@ function escapeHtml(str) {
   return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
+var _appToastHideTimer = null;
+function showAppToast(message, variant, durationMs) {
+  variant = variant || "info";
+  durationMs = durationMs != null ? durationMs : (variant === "error" ? 5200 : 3800);
+  var root = document.getElementById("appToastRoot");
+  if (!root) return;
+  root.innerHTML = "";
+  var el = document.createElement("div");
+  el.className = "app-toast app-toast--" + variant;
+  el.setAttribute("role", "status");
+  el.textContent = message;
+  root.appendChild(el);
+  requestAnimationFrame(function () {
+    el.classList.add("app-toast--visible");
+  });
+  clearTimeout(_appToastHideTimer);
+  _appToastHideTimer = setTimeout(function () {
+    el.classList.remove("app-toast--visible");
+    setTimeout(function () {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }, 320);
+  }, durationMs);
+}
+
+var _adminConfirmResolver = null;
+function showAdminConfirm(opts) {
+  opts = opts || {};
+  return new Promise(function (resolve) {
+    if (_adminConfirmResolver) {
+      var prev = _adminConfirmResolver;
+      _adminConfirmResolver = null;
+      prev(false);
+    }
+    _adminConfirmResolver = resolve;
+    var ov = document.getElementById("adminConfirmOverlay");
+    if (!ov) {
+      _adminConfirmResolver = null;
+      resolve(false);
+      return;
+    }
+    var titleEl = document.getElementById("adminConfirmTitle");
+    var msgEl = document.getElementById("adminConfirmMessage");
+    var detEl = document.getElementById("adminConfirmDetail");
+    var okBtn = document.getElementById("btnAdminConfirmOk");
+    var canBtn = document.getElementById("btnAdminConfirmCancel");
+    if (titleEl) titleEl.textContent = opts.title || "Подтверждение";
+    if (msgEl) msgEl.textContent = opts.message != null ? opts.message : "";
+    if (detEl) detEl.textContent = opts.detail != null ? opts.detail : "";
+    if (okBtn) okBtn.textContent = opts.confirmLabel || "Удалить";
+    if (canBtn) canBtn.textContent = opts.cancelLabel || "Отмена";
+    ov.classList.add("show");
+    ov.setAttribute("aria-hidden", "false");
+    if (okBtn) okBtn.focus();
+  });
+}
+
+function closeAdminConfirm(confirmed) {
+  var ov = document.getElementById("adminConfirmOverlay");
+  if (ov) {
+    ov.classList.remove("show");
+    ov.setAttribute("aria-hidden", "true");
+  }
+  if (_adminConfirmResolver) {
+    var r = _adminConfirmResolver;
+    _adminConfirmResolver = null;
+    r(!!confirmed);
+  }
+}
+
 // ── СОЗДАТЬ КОМНАТУ ───────────────────────────────────────────
 async function createRoom() {
   if (!state.nickname) return;
@@ -1274,19 +1343,117 @@ function leaveGame() {
   startLobbyPolling();
 }
 
-// ── ПЕРЕЗАПУСК (ADMIN) ────────────────────────────────────────
-async function restartGame() {
-  var pwd = document.getElementById("adminPassword").value.trim();
-  if (!pwd) { alert("Введите пароль"); return; }
+// ── СПИСОК КОМНАТ / УДАЛЕНИЕ (ADMIN) ────────────────────────
+function _phaseLabelRu(phase) {
+  if (phase === "waiting") return "ожидание";
+  if (phase === "playing") return "игра";
+  return String(phase || "—");
+}
+
+function renderAdminRoomsList(rooms) {
+  var box = document.getElementById("adminRoomsList");
+  var hint = document.getElementById("adminRoomsHint");
+  var panel = document.getElementById("adminRoomsPanel");
+  if (!box || !panel) return;
+
+  if (hint) hint.textContent = rooms.length
+    ? "Комнат: " + rooms.length
+    : "Нет записей";
+
+  if (!rooms.length) {
+    box.innerHTML = '<div class="admin-rooms-empty">Нет активных комнат на сервере.</div>';
+    panel.hidden = false;
+    return;
+  }
+
+  var curId = (typeof state !== "undefined" && state && state.roomId) ? state.roomId : "";
+  var html = '<table class="admin-rooms-table"><thead><tr>'
+    + "<th>Комната</th><th>Игроки</th><th>Фаза</th><th></th>"
+    + "</tr></thead><tbody>";
+
+  rooms.forEach(function (r) {
+    var n = r.playerCount != null ? r.playerCount : 0;
+    var nickLine = [];
+    if (r.player1Nick) nickLine.push(escapeHtml(r.player1Nick));
+    if (r.player2Nick) nickLine.push(escapeHtml(r.player2Nick));
+    var names = nickLine.length ? nickLine.join(" · ") : '<span class="admin-rooms-dim">—</span>';
+    var cur = curId && r.roomId === curId ? ' <span class="admin-rooms-badge">вы здесь</span>' : "";
+    html += "<tr>"
+      + '<td class="admin-rooms-id">' + escapeHtml(r.roomId) + cur + "</td>"
+      + '<td><span class="admin-rooms-count">' + n + "</span> · " + names + "</td>"
+      + "<td>" + escapeHtml(_phaseLabelRu(r.phase)) + "</td>"
+      + '<td><button type="button" class="btn btn-danger btn-sm admin-rooms-del" data-room-id="'
+      + String(r.roomId).replace(/"/g, "&quot;") + '">Удалить</button></td>'
+      + "</tr>";
+  });
+
+  html += "</tbody></table>";
+  box.innerHTML = html;
+
+  box.querySelectorAll(".admin-rooms-del").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var rid = btn.getAttribute("data-room-id");
+      if (rid) adminDeleteRoom(rid);
+    });
+  });
+
+  panel.hidden = false;
+}
+
+async function loadAdminRoomsList() {
+  var pwdEl = document.getElementById("adminPassword");
+  var pwd = pwdEl ? pwdEl.value.trim() : "";
+  if (!pwd) {
+    showAppToast("Введите пароль администратора", "warning", 4000);
+    if (pwdEl) pwdEl.focus();
+    return;
+  }
   try {
-    var res = await apiPost({ action: "restart", password: pwd, roomId: state.roomId });
+    var res = await apiPost({ action: "listRoomsAdmin", password: pwd });
+    if (res.ok && res.rooms) {
+      renderAdminRoomsList(res.rooms);
+    } else {
+      showAppToast(res.error || "Не удалось получить список комнат", "error");
+    }
+  } catch (e) {
+    showAppToast("Нет связи с сервером. Проверьте сеть и повторите.", "error");
+  }
+}
+
+async function adminDeleteRoom(roomId) {
+  if (!roomId) return;
+  var pwdEl = document.getElementById("adminPassword");
+  var pwd = pwdEl ? pwdEl.value.trim() : "";
+  if (!pwd) {
+    showAppToast("Введите пароль администратора", "warning", 4000);
+    if (pwdEl) pwdEl.focus();
+    return;
+  }
+  var confirmed = await showAdminConfirm({
+    title: "Удалить комнату?",
+    message: "«" + roomId + "»",
+    detail: "Комната будет удалена с сервера без восстановления. Все игроки в ней потеряют сессию.",
+    confirmLabel: "Удалить",
+    cancelLabel: "Отмена"
+  });
+  if (!confirmed) return;
+  try {
+    var res = await apiPost({ action: "restart", password: pwd, roomId: roomId });
     if (res.ok) {
-      state.winnerShown = false;
-      document.getElementById("winnerOverlay").classList.remove("show");
-      alert("Комната удалена");
-      leaveGame();
-    } else { alert("Ошибка: " + res.error); }
-  } catch(e) { alert("Ошибка запроса"); }
+      var wasHere = (typeof state !== "undefined" && state && state.roomId === roomId);
+      if (wasHere) {
+        state.winnerShown = false;
+        document.getElementById("winnerOverlay").classList.remove("show");
+        leaveGame();
+      }
+      showAppToast("Комната " + roomId + " удалена", "ok", 3200);
+      await loadAdminRoomsList();
+    } else {
+      showAppToast(res.error || "Операция не выполнена", "error");
+    }
+  } catch (e) {
+    showAppToast("Нет связи с сервером. Проверьте сеть и повторите.", "error");
+  }
 }
 
 // ── ИНДИКАТОРЫ ФЛОТА ───────────────────────────────────────────
@@ -2202,6 +2369,26 @@ function forceUnlockInput() {
 
   // Докачиваем недостающее в Cache Storage (без перезаписи)
   preloadAllAudioToCache({ overwrite: false, onlyMissing: true });
+
+  // Админ: не onclick (SES/lockdown), и до любого return в init
+  var btnAdminRoomsLoad = document.getElementById("btnAdminRoomsLoad");
+  if (btnAdminRoomsLoad) btnAdminRoomsLoad.addEventListener("click", loadAdminRoomsList);
+
+  var adminConfirmOv = document.getElementById("adminConfirmOverlay");
+  var btnAdminConfCancel = document.getElementById("btnAdminConfirmCancel");
+  var btnAdminConfOk = document.getElementById("btnAdminConfirmOk");
+  if (btnAdminConfCancel) btnAdminConfCancel.addEventListener("click", function () { closeAdminConfirm(false); });
+  if (btnAdminConfOk) btnAdminConfOk.addEventListener("click", function () { closeAdminConfirm(true); });
+  if (adminConfirmOv) {
+    adminConfirmOv.addEventListener("click", function (e) {
+      if (e.target === adminConfirmOv) closeAdminConfirm(false);
+    });
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    var ov = document.getElementById("adminConfirmOverlay");
+    if (ov && ov.classList.contains("show")) closeAdminConfirm(false);
+  });
 
   // Подставляем сохранённый никнейм
   var savedNick = loadSavedNickname();

@@ -5,7 +5,7 @@
 // ============================================================
 
 // ── НАСТРОЙКИ ──────────────────────────────────────────────
-var ADMIN_PASSWORD      = "kokos666";
+var ADMIN_PASSWORD      = "admin";
 var SHEET_NAME_ROOMS    = "Комнаты";
 var SHEET_NAME_PLAYERS  = "Игроки";
 var SHEET_NAME_STATE    = "Состояние";
@@ -39,6 +39,7 @@ function doPost(e) {
     if (action === "joinRoom")   return jsonResponse(joinRoom(data));
     if (action === "move")       return jsonResponse(makeMove(data));
     if (action === "restart")    return jsonResponse(restartGame(data));
+    if (action === "listRoomsAdmin") return jsonResponse(listRoomsAdmin(data));
     if (action === "leave")      return jsonResponse(leaveGame(data));
     return jsonResponse({ ok: false, error: "Неизвестное действие: " + action });
   } catch (err) {
@@ -670,6 +671,31 @@ function leaveGame(data) {
   }
 
   return { ok: true, message: "Вы вышли из игры" };
+}
+
+// ── СПИСОК КОМНАТ (ADMIN) ────────────────────────────────────
+function listRoomsAdmin(data) {
+  var password = (data.password || "").trim();
+  if (password !== ADMIN_PASSWORD) return { ok: false, error: "Неверный пароль" };
+  initSheets();
+  cleanupOldRooms();
+  var rooms = readRooms();
+  var out = [];
+  for (var i = 0; i < rooms.length; i++) {
+    var r = rooms[i];
+    var n = 0;
+    if (r.player1Id) n++;
+    if (r.player2Id) n++;
+    out.push({
+      roomId:        r.roomId,
+      phase:         r.phase,
+      playerCount:   n,
+      player1Nick:   r.player1Nick || "",
+      player2Nick:   r.player2Nick || "",
+      lastActivity:  r.lastActivity
+    });
+  }
+  return { ok: true, rooms: out };
 }
 
 // ── ПЕРЕЗАПУСК ИГРЫ (ADMIN) ──────────────────────────────────
