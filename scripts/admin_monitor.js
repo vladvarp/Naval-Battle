@@ -320,8 +320,8 @@ async function renderMonitor() {
   html += renderMonitorSection("⚙ АУДИО-ДВИЖОК", [
     { k: "Режим",
       vRaw: isIos
-        ? '<span class="mon-badge-ios">📱 iOS — Web Audio API</span>'
-        : '<span class="mon-badge-std">🖥 Стандарт — HTMLAudioElement</span>' },
+        ? '<span class="mon-badge-ios">📱 Web Audio API</span>'
+        : '<span class="mon-badge-std">🖥 HTMLAudioElement</span>' },
     { k: "User-Agent (кратко)", v: (navigator.userAgent || "").substring(0, 58) + "…", valCls: "mon-dim" },
   ]);
 
