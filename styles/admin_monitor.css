@@ -74,7 +74,7 @@
   background: rgba(4,20,40,0.98);
   border: 1px solid rgba(26,159,212,0.3);
   border-radius: 14px;
-  width: 100%; max-width: 560px;
+  width: 100%; max-width: min(560px, calc(100vw - 32px));
   position: relative;
   box-shadow: 0 20px 60px rgba(0,0,0,0.7), inset 0 1px 0 rgba(26,159,212,0.12);
   overflow: hidden;
@@ -125,6 +125,11 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* Секция в мониторе */
@@ -133,6 +138,9 @@
   border: 1px solid rgba(26,159,212,0.1);
   border-radius: 8px;
   padding: 12px 14px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .mon-section-title {
   font-size: 9px;
@@ -155,7 +163,9 @@
   padding: 4px 12px 4px 0;
   width: 52%;
   border-bottom: 1px solid rgba(26,159,212,0.06);
-  vertical-align: middle;
+  vertical-align: top;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .mon-val {
   font-size: 10px;
@@ -163,7 +173,9 @@
   letter-spacing: 0.5px;
   padding: 4px 0;
   border-bottom: 1px solid rgba(26,159,212,0.06);
-  vertical-align: middle;
+  vertical-align: top;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .mon-val-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .mon-green { color: #7dffb3 !important; }
@@ -228,6 +240,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  line-height: 1.35;
   list-style: none;
 }
 
@@ -254,9 +269,81 @@
   transform: rotate(90deg);
 }
 
-/* контент таблицы */
-.monitor-card .pcm-details > table {
-  padding: 0 14px 14px 14px;
-  width: 100%;
+/* контент таблицы PCM */
+.monitor-card .pcm-details > .mon-table-pcm {
+  margin: 0 14px 14px 14px;
+  width: calc(100% - 28px);
   box-sizing: border-box;
 }
+
+.mon-table-pcm {
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+  line-height: 1.35;
+}
+.mon-table-pcm thead th {
+  font-size: 8px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: rgba(168,228,255,0.42);
+  font-weight: 600;
+  padding: 10px 8px 8px 0;
+  border-bottom: 1px solid rgba(26,159,212,0.18);
+  text-align: left;
+  vertical-align: bottom;
+}
+.mon-table-pcm thead th.mon-th-pcm-file { width: 36%; }
+.mon-table-pcm thead th.mon-th-pcm-cat { width: 18%; }
+.mon-table-pcm thead th.mon-th-pcm-dur { width: 14%; }
+.mon-table-pcm thead th.mon-th-pcm-ch { width: 12%; }
+.mon-table-pcm thead th.mon-th-pcm-size {
+  width: 20%;
+  text-align: right;
+  padding-right: 0;
+}
+.mon-table-pcm tbody td {
+  padding: 8px 8px 8px 0;
+  vertical-align: top;
+  border-bottom: 1px solid rgba(26,159,212,0.07);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+.mon-table-pcm tbody tr:last-child td { border-bottom: none; }
+
+.mon-td-pcm-file {
+  font-family: "Share Tech Mono", ui-monospace, monospace;
+  font-size: 10px;
+  color: rgba(230,245,255,0.92);
+}
+.mon-td-pcm-meta {
+  font-variant-numeric: tabular-nums;
+  color: rgba(168,228,255,0.85);
+}
+.mon-td-pcm-size {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pcm-cat-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  text-transform: lowercase;
+  border: 1px solid rgba(26,159,212,0.2);
+  background: rgba(26,159,212,0.06);
+  color: rgba(168,228,255,0.75);
+}
+.pcm-cat-badge.pcm-cat-shoot { border-color: rgba(231,76,60,0.35); background: rgba(231,76,60,0.08); color: #ffaaa5; }
+.pcm-cat-badge.pcm-cat-turn { border-color: rgba(241,196,15,0.35); background: rgba(241,196,15,0.07); color: #f4d03f; }
+.pcm-cat-badge.pcm-cat-hit,
+.pcm-cat-badge.pcm-cat-sunk { border-color: rgba(46,204,113,0.35); background: rgba(46,204,113,0.07); color: #7dffb3; }
+.pcm-cat-badge.pcm-cat-miss { border-color: rgba(52,152,219,0.35); background: rgba(52,152,219,0.08); color: #85c1e9; }
+.pcm-cat-badge.pcm-cat-game { border-color: rgba(155,89,182,0.35); background: rgba(155,89,182,0.08); color: #d7bde2; }
+.pcm-cat-badge.pcm-cat-unknown { opacity: 0.75; }

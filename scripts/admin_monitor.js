@@ -172,10 +172,11 @@ async function collectMonitorData() {
           data.audioIos.buffersDetail.push({
             shortName: shortName,
             category: category,
-            duration: buf.duration ? buf.duration.toFixed(2) + "с" : "—",
+            duration: buf.duration ? buf.duration.toFixed(2) + " с" : "—",
             channels: buf.numberOfChannels || 1,
             frames: buf.length || 0,
-            pcmKB: Math.round(bytes / 1024) + " КБ"
+            pcmKB: Math.round(bytes / 1024) + " КБ",
+            pcmBytes: bytes
           });
         });
 
@@ -384,21 +385,30 @@ async function renderMonitor() {
       if (ai.buffersDetail && ai.buffersDetail.length) {
         var openAttr = _pcmDetailsOpen ? ' open' : '';
         html += `<details id="pcmDetails" class="mon-section pcm-details"${openAttr}>`;
-        html += `<summary class="mon-section-title">🔬 Что именно занимает память (PCM float32) <span class="mon-dim">(${ai.buffersDetail.length} буферов)</span></summary>`;
-        html += '<table class="mon-table" style="font-size:10px;line-height:1.3">';
-        html += '<thead><tr><th style="width:45%">Файл</th><th>Кат.</th><th>Длит.</th><th>Кан.</th><th style="text-align:right">Размер</th></tr></thead><tbody>';
-        
+        html += `<summary class="mon-section-title">🔬 PCM в памяти <span class="mon-dim">(float32 · ${ai.buffersDetail.length} буф.)</span></summary>`;
+        html += '<table class="mon-table mon-table-pcm">';
+        html += '<thead><tr>'
+          + '<th class="mon-th-pcm-file">Файл</th>'
+          + '<th class="mon-th-pcm-cat">Кат.</th>'
+          + '<th class="mon-th-pcm-dur">Длит.</th>'
+          + '<th class="mon-th-pcm-ch">Кан.</th>'
+          + '<th class="mon-th-pcm-size">Размер</th>'
+          + '</tr></thead><tbody>';
+
         ai.buffersDetail.forEach(function(b) {
-          html += `<tr>
-            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(b.shortName)}</td>
-            <td><span class="mon-dim">${b.category}</span></td>
-            <td>${b.duration}</td>
-            <td>${b.channels}ch</td>
-            <td style="text-align:right" class="mon-gold">${b.pcmKB}</td>
-          </tr>`;
+          var cat = (b.category && typeof b.category === "string") ? b.category : "unknown";
+          if (["shoot", "turn", "hit", "sunk", "miss", "game", "unknown"].indexOf(cat) < 0) cat = "unknown";
+          var catCls = "pcm-cat-" + cat;
+          html += "<tr>"
+            + '<td class="mon-td-pcm-file">' + escHtml(b.shortName) + "</td>"
+            + '<td><span class="pcm-cat-badge ' + catCls + '">' + escHtml(cat) + "</span></td>"
+            + '<td class="mon-td-pcm-meta">' + escHtml(b.duration) + "</td>"
+            + '<td class="mon-td-pcm-meta">' + escHtml(String(b.channels)) + " ch</td>"
+            + '<td class="mon-td-pcm-size mon-gold">' + escHtml(b.pcmKB) + "</td>"
+            + "</tr>";
         });
-        
-        html += '</tbody></table></details>';
+
+        html += "</tbody></table></details>";
       }
     }
   } else if (d.audioStd) {
