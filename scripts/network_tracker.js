@@ -33,6 +33,14 @@ var networkTracker = {
     var _origFetch = window.fetch;
   
     window.fetch = function(input, init) {
+      // Если трекер на паузе — не логируем запросы (и не трогаем статистику),
+      // просто пробрасываем вызов в оригинальный fetch.
+      try {
+        if (typeof trackerUI !== "undefined" && trackerUI && trackerUI.paused) {
+          return _origFetch.call(window, input, init);
+        }
+      } catch (e) {}
+
       var url = typeof input === "string" ? input : (input && input.url ? input.url : String(input));
       var method = (init && init.method) || (input && input.method) || "GET";
       var body = (init && init.body) || (input && input.body) || null;
@@ -269,9 +277,29 @@ var networkTracker = {
     filterCat: "all",
     sortBy: "time",
     expandedId: null,
-    paused: false,
+    paused: true,
     searchText: ""
   };
+
+  // Запоминаем состояние паузы между перезагрузками
+  (function restoreTrackerPauseState() {
+    try {
+      var raw = localStorage.getItem("mb_tracker_paused");
+      if (raw === "1") trackerUI.paused = true;
+      else if (raw === "0") trackerUI.paused = false;
+    } catch (e) {}
+  })();
+
+  function applyTrackerPauseUI() {
+    var btn = document.getElementById("trackerPauseBtn");
+    if (btn) {
+      btn.textContent = trackerUI.paused ? "▶" : "⏸";
+      btn.title = trackerUI.paused ? "Продолжить" : "Пауза";
+      btn.classList.toggle("copied", trackerUI.paused);
+    }
+    var dot = document.getElementById("trackerLiveDot");
+    if (dot) dot.style.animationPlayState = trackerUI.paused ? "paused" : "running";
+  }
   
   // ── ОТКРЫТЬ / ЗАКРЫТЬ ТРЕКЕР ──────────────────────────────────
   
@@ -284,6 +312,7 @@ var networkTracker = {
     }
     if (!overlay) return;
     overlay.classList.add("show");
+    applyTrackerPauseUI();
     renderNetworkTracker();
     _trackerInterval = setInterval(function() {
       if (!trackerUI.paused) renderNetworkTracker();
@@ -651,14 +680,9 @@ var networkTracker = {
   
   function toggleTrackerPause() {
     trackerUI.paused = !trackerUI.paused;
-    var btn = document.getElementById("trackerPauseBtn");
-    if (btn) {
-      btn.textContent = trackerUI.paused ? "▶" : "⏸";
-      btn.title = trackerUI.paused ? "Продолжить" : "Пауза";
-      btn.classList.toggle("copied", trackerUI.paused);
-    }
-    var dot = document.getElementById("trackerLiveDot");
-    if (dot) dot.style.animationPlayState = trackerUI.paused ? "paused" : "running";
+    try { localStorage.setItem("mb_tracker_paused", trackerUI.paused ? "1" : "0"); } catch (e) {}
+    applyTrackerPauseUI();
+    if (!trackerUI.paused) renderNetworkTracker();
   }
   
   function clearTrackerHistory() {

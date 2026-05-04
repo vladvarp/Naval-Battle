@@ -1232,7 +1232,7 @@ function addLog(text, type) {
   li.className = "log-entry " + (type || "miss");
   li.innerHTML = '<span class="ts">' + ts + '</span>' + text;
   list.insertBefore(li, list.firstChild);
-  while (list.children.length > 50) list.removeChild(list.lastChild);
+  while (list.children.length > 300) list.removeChild(list.lastChild);
   
   // Сохраняем лог в зависимости от режима
   if (solo && solo.active) {
@@ -2360,6 +2360,41 @@ function forceUnlockInput() {
 
   updateSoundButton();
   updateFullscreenButton();
+
+  // UI: запоминаем свёрнутость/развёрнутость панелей
+  (function initDetailsPersistence() {
+    function restoreDetails(selector, key, fallbackOpen) {
+      var els = document.querySelectorAll(selector);
+      if (!els || !els.length) return;
+
+      var raw = null;
+      try { raw = localStorage.getItem(key); } catch (e) {}
+
+      els.forEach(function (el) {
+        if (raw === "1") el.open = true;
+        else if (raw === "0") el.open = false;
+        else el.open = !!fallbackOpen;
+
+        var save = function () {
+          try { localStorage.setItem(key, el.open ? "1" : "0"); } catch (e) {}
+        };
+
+        // Основной путь
+        el.addEventListener("toggle", save);
+
+        // Фолбэк: если toggle не прилетает (редко, но бывает) — сохраняем после клика по summary
+        var summary = el.querySelector("summary");
+        if (summary) {
+          summary.addEventListener("click", function () { setTimeout(save, 0); });
+          summary.addEventListener("keydown", function (e) {
+            if (e.key === "Enter" || e.key === " ") setTimeout(save, 0);
+          });
+        }
+      });
+    }
+    restoreDetails("details.log-panel", "mb_ui_log_open", false);
+    restoreDetails("details.admin-panel", "mb_ui_admin_open", false);
+  })();
 
   // Регистрируем SW, чтобы аудио читалось из Cache Storage (переживает F5)
   registerAudioServiceWorker();
