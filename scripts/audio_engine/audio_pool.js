@@ -19,8 +19,8 @@ var AUDIO_EVENTS = [
   { id: "hitMe",     label: "🎯 - 2️⃣",                    folder: "audio/hitMe",     files: makeFiles(29) }, // "🎯 Попадение по нам"
   { id: "sunkMe",    label: "⚓ - 1️⃣",                    folder: "audio/sunkMe",    files: makeFiles(29) }, // "⚓ Корабль потоплен наш"
   { id: "sunkEnemy", label: "⚓ - 2️⃣",                    folder: "audio/sunkEnemy", files: makeFiles(29) }, // "⚓ Корабль потоплен противника"
-  { id: "miss",      label: "🌊 - 1️⃣",                    folder: "audio/miss",      files: makeFiles(34) }, // "🌊 Промах наш"
-  { id: "enemyMiss", label: "🌊 - 2️⃣",                    folder: "audio/enemyMiss", files: makeFiles(21) }, // "🌊 Промах противника"
+  { id: "miss",      label: "🌊 - 1️⃣",                    folder: "audio/miss",      files: makeFiles(44) }, // "🌊 Промах наш"
+  { id: "enemyMiss", label: "🌊 - 2️⃣",                    folder: "audio/enemyMiss", files: makeFiles(30) }, // "🌊 Промах противника"
   { id: "turnMine",  label: "⏳ - 1️⃣",                    folder: "audio/turnMine",  files: makeFiles(28) }, // "⏳ Ход наш"
   { id: "turnEnemy", label: "⏳ - 2️⃣",                    folder: "audio/turnEnemy", files: makeFiles(26) }, // "⏳ Ход противника"
 ];
