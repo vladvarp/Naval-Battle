@@ -1,0 +1,21 @@
+/* iOS silent-mode notice (visibility controlled by scripts/ios_silent_note.js) */
+#iosSilentNote[hidden] { display: none !important; }
+
+#iosSilentNote {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(168,228,255,0.18);
+  background: rgba(8,16,24,0.35);
+  color: rgba(168,228,255,0.75);
+  font-size: 12px;
+  line-height: 1.35;
+  letter-spacing: 0.2px;
+  text-align: left;
+}
+
+#iosSilentNote strong {
+  color: rgba(168,228,255,0.92);
+  font-weight: 700;
+}
+

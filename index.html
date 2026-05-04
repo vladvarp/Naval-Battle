@@ -6,6 +6,7 @@
 <title>NAVAL COMBAT</title>
 <link rel="stylesheet" href="./styles/main.css">
 <link rel="stylesheet" href="./styles/admin_monitor.css">
+<link rel="stylesheet" href="./styles/ios_silent_note.css">
 
 </head>
 <body>
@@ -105,9 +106,12 @@
       <button class="btn btn-primary" onclick="goToLobby()">🚢 ПРОДОЛЖИТЬ</button>
       <div id="loginMsg"></div>
     </div>
+        <!-- Окно с уведомлением о режиме беззвучного -->
+        <div id="iosSilentNote" hidden>
+          <strong>iPhone:</strong> если включён режим «Беззвучный», звуки в игре могут не быть слышны — iOS иногда воспринимает их как уведомления. Отключите «Беззвучный», чтобы слышать эффекты.
+        </div>
         <!-- Кнопки действий -->
         <div class="actions-bar">
-          <button class="btn btn-ghost btn-sm" data-role="btnCache" onclick="openAudioDebug()">🟥 Кэш</button>
           <button class="btn btn-ghost btn-sm" data-role="btnFullscreen" onclick="toggleFullscreen()">⛶</button>
         </div>
   </div>
@@ -377,5 +381,6 @@
 <script src="./scripts/network_tracker.js"></script>
 <script src="./scripts/engine.js"></script>
 <script src="./scripts/mouse_easteregg.js"></script>
+<script src="./scripts/ios_silent_note.js"></script>
 </body>
 </html>
