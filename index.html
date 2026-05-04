@@ -88,7 +88,7 @@
 
 <!-- ШАПКА -->
 <header>
-  <div class="logo">NAVAL⚓<span>COMBAT</span><span class="logo-ios">v2</span>  </div>
+  <div class="logo">NAVAL⚓<span>COMBAT</span><span class="logo-ios"><script>(function(){var v="v2";try{var s=localStorage.getItem("navalAudioEngine");if(s==="v1"||s==="v2")v=s;}catch(e){}document.write(v);})();</script></span>  </div>
   <div class="subtitle"></div>
 </header>
 
@@ -287,10 +287,10 @@
 
         <div class="admin-section-label">ДИАГНОСТИКА</div>
         <div class="admin-btn-group">
-          <button class="btn btn-ghost btn-sm" onclick="openMonitor()">📡 Монитор системы</button>
+          <button class="btn btn-ghost btn-sm" onclick="openMonitor()">📡 Монитор</button>
           <button class="btn btn-ghost btn-sm" data-role="btnCache" onclick="openAudioDebug()">📦 Аудио-кэш</button>
-          <button class="btn btn-ghost btn-sm" onclick="openAudioProb()">🎲 Вероятности</button>
-          <button class="btn btn-ghost btn-sm" onclick="location.href='./old.html'">🔉 Audio v1</button>
+          <button class="btn btn-ghost btn-sm" onclick="openAudioProb()">🎲 Рандом</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="adminAudioToggle" title="Переключить audio_v1 / audio_v2 (перезагрузка)"></button>
         </div>
 
         <div class="admin-divider"></div>
@@ -352,7 +352,7 @@
 
 <script src="./scripts/client.js"></script>
 <script src="./scripts/audio_engine/audio_pool.js"></script>
-<script src="./scripts/audio_engine/audio_v2.js"></script>
+<script src="./scripts/audio_engine/audio_switcher.js"></script>
 <script src="./scripts/admin_monitor.js"></script>
 <script src="./scripts/engine.js"></script>
 
