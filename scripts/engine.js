@@ -2364,6 +2364,9 @@ function forceUnlockInput() {
   // Регистрируем SW, чтобы аудио читалось из Cache Storage (переживает F5)
   registerAudioServiceWorker();
 
+  // Устанавливаем перехватчик сети (для Network Tracker)
+  installNetworkInterceptor();
+
   // Иконка кэша на кнопке (🟥/🟨/🟩)
   updateCacheButtons();
 
