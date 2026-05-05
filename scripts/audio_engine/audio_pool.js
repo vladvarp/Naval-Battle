@@ -15,14 +15,14 @@ var AUDIO_EVENTS = [
   { id: "gameWin",   label: "🏆 - 1️⃣",                    folder: "audio/gameWin",   files: makeFiles(10) }, // "🏆 Победа"
   { id: "gameLose",  label: "💀 - 1️⃣",                    folder: "audio/gameLose",  files: makeFiles(10) }, // "💀 Поражение"
   { id: "shoot",     label: "💥 - 1️⃣",                    folder: "audio/shoot",     files: makeFiles(47) }, // "💥 Выстрел наш"
-  { id: "hitEnemy",  label: "🎯 - 1️⃣",                    folder: "audio/hitEnemy",  files: makeFiles(28) }, // "🎯 Попадение по противнику"
-  { id: "hitMe",     label: "🎯 - 2️⃣",                    folder: "audio/hitMe",     files: makeFiles(30) }, // "🎯 Попадение по нам"
-  { id: "sunkMe",    label: "⚓ - 1️⃣",                    folder: "audio/sunkMe",    files: makeFiles(29) }, // "⚓ Корабль потоплен наш"
+  { id: "hitEnemy",  label: "🎯 - 1️⃣",                    folder: "audio/hitEnemy",  files: makeFiles(30) }, // "🎯 Попадение по противнику"
+  { id: "hitMe",     label: "🎯 - 2️⃣",                    folder: "audio/hitMe",     files: makeFiles(31) }, // "🎯 Попадение по нам"
+  { id: "sunkMe",    label: "⚓ - 1️⃣",                    folder: "audio/sunkMe",    files: makeFiles(30) }, // "⚓ Корабль потоплен наш"
   { id: "sunkEnemy", label: "⚓ - 2️⃣",                    folder: "audio/sunkEnemy", files: makeFiles(30) }, // "⚓ Корабль потоплен противника"
-  { id: "miss",      label: "🌊 - 1️⃣",                    folder: "audio/miss",      files: makeFiles(45) }, // "🌊 Промах наш"
-  { id: "enemyMiss", label: "🌊 - 2️⃣",                    folder: "audio/enemyMiss", files: makeFiles(31) }, // "🌊 Промах противника"
-  { id: "turnMine",  label: "⏳ - 1️⃣",                    folder: "audio/turnMine",  files: makeFiles(29) }, // "⏳ Ход наш"
-  { id: "turnEnemy", label: "⏳ - 2️⃣",                    folder: "audio/turnEnemy", files: makeFiles(27) }, // "⏳ Ход противника"
+  { id: "miss",      label: "🌊 - 1️⃣",                    folder: "audio/miss",      files: makeFiles(46) }, // "🌊 Промах наш"
+  { id: "enemyMiss", label: "🌊 - 2️⃣",                    folder: "audio/enemyMiss", files: makeFiles(32) }, // "🌊 Промах противника"
+  { id: "turnMine",  label: "⏳ - 1️⃣",                    folder: "audio/turnMine",  files: makeFiles(31) }, // "⏳ Ход наш"
+  { id: "turnEnemy", label: "⏳ - 2️⃣",                    folder: "audio/turnEnemy", files: makeFiles(29) }, // "⏳ Ход противника"
 ];
 
 var audioState = {
