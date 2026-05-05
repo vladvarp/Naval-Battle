@@ -56,6 +56,34 @@
     return { key: "awful", label: "очень плохо", color: "#ff6b6b" };
   }
 
+  function isNetWidgetVisible() {
+    var net = document.getElementById("networkTrackerQuickBtn");
+    if (!net) return false;
+    var st = null;
+    try { st = window.getComputedStyle(net); } catch (e) {}
+    if (!st) return false;
+    return st.display !== "none" && st.visibility !== "hidden" && st.opacity !== "0";
+  }
+
+  function resolveGasLeftPx() {
+    var left = 34;
+    if (!isNetWidgetVisible()) return left;
+    var net = document.getElementById("networkTrackerQuickBtn");
+    try {
+      var rect = net.getBoundingClientRect();
+      left = Math.max(34, Math.round(rect.right + 8));
+    } catch (e) {}
+    return left;
+  }
+
+  function syncGasDockPosition() {
+    try {
+      if (pingMonitor && pingMonitor.el) {
+        pingMonitor.el.style.left = resolveGasLeftPx() + "px";
+      }
+    } catch (e) {}
+  }
+
   var pingMonitor = {
     active: false,
     samples: [],
@@ -100,6 +128,7 @@
       }
 
       this.el = root;
+      this.el.style.left = resolveGasLeftPx() + "px";
       this.elDot = root.querySelector(".ping-dot");
       this.elText = root.querySelector(".ping-text");
       this.elTip = root.querySelector(".ping-tip");
@@ -250,6 +279,7 @@
 
     render: function () {
       if (!this.el) return;
+      this.el.style.left = resolveGasLeftPx() + "px";
 
       // Если есть inFlight — показываем прогресс ожидания сразу
       var inFlightMs = null;
@@ -340,6 +370,7 @@
   (function installVisibilityLoop() {
     var lastVisible = null;
     function tick() {
+      syncGasDockPosition();
       var want = shouldShowInPvp();
       if (want !== lastVisible) {
         lastVisible = want;
@@ -347,6 +378,7 @@
       }
     }
     tick();
+    window.addEventListener("mb_tracker_widget_changed", syncGasDockPosition);
     setInterval(tick, 400);
   })();
 })();

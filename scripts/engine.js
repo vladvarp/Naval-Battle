@@ -620,6 +620,9 @@ async function shoot(x, y) {
 
     if (!res.ok) {
       addLog("Ошибка: " + res.error, "miss");
+      if (isRoomMissingErrorMessage(res.error)) {
+        handleRoomMissingFromServer(res.error);
+      }
       return;
     }
 
@@ -945,21 +948,42 @@ function computeLastNonPerimeterShot(shots) {
 }
 
 // ── POLLING СОСТОЯНИЯ ─────────────────────────────────────────
-function startPolling() { fetchState(); state.pollTimer = setInterval(fetchState, POLL_INTERVAL); }
+function startPolling() { _roomMissingHandled = false; fetchState(); state.pollTimer = setInterval(fetchState, POLL_INTERVAL); }
 function stopPolling()  { if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; } }
 
 var _fetchStatePending = false;
+var _roomMissingHandled = false;
+
+function isRoomMissingErrorMessage(msg) {
+  return /комната\s+не\s+найдена/i.test(String(msg || ""));
+}
+
+function handleRoomMissingFromServer(errorText) {
+  if (_roomMissingHandled) return;
+  _roomMissingHandled = true;
+  showAppToast("Комната удалена или устарела. Возврат в лобби.", "warning", 4200);
+  addLog("Сессия завершена: " + String(errorText || "комната удалена"), "miss");
+  leaveGame();
+}
+
 async function fetchState() {
   if (_fetchStatePending) return;          // защита от параллельных вызовов
   _fetchStatePending = true;
   var dot = document.getElementById("pollingDot");
-  dot.classList.add("active");
+  if (dot) dot.classList.add("active");
   try {
     var gs = await apiGet({ playerId: state.playerId, roomId: state.roomId });
-    dot.classList.remove("active");
-    if (!gs.ok) return;
+    if (dot) dot.classList.remove("active");
+    if (!gs.ok) {
+      var errText = String(gs && gs.error ? gs.error : "");
+      if (isRoomMissingErrorMessage(errText)) {
+        handleRoomMissingFromServer(errText);
+      }
+      return;
+    }
+    _roomMissingHandled = false;
     processGameState(gs);
-  } catch(e) { dot.classList.remove("active"); }
+  } catch(e) { if (dot) dot.classList.remove("active"); }
   finally { _fetchStatePending = false; }
 }
 
@@ -1322,6 +1346,7 @@ function closeWinner() { document.getElementById("winnerOverlay").classList.remo
 
 // ── ВЫХОД ────────────────────────────────────────────────────
 function leaveGame() {
+  _roomMissingHandled = false;
   if (state.playerId && state.roomId) {
     apiPost({ action: "leave", playerId: state.playerId, roomId: state.roomId }).catch(function(){});
   }

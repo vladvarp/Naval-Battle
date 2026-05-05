@@ -1,0 +1,52 @@
+/* ============================================================
+   NAVAL COMBAT — Network Tracker Quick Button
+   styles/network_tracker_button.css
+   ============================================================ */
+
+.network-tracker-quick {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  z-index: 1210;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(26, 159, 212, 0.28);
+  background: rgba(2, 13, 24, 0.72);
+  backdrop-filter: blur(6px);
+
+  color: rgba(232, 244, 255, 0.92);
+  font-family: "Share Tech Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.network-tracker-quick:hover {
+  border-color: rgba(125, 255, 179, 0.65);
+  box-shadow: 0 0 12px rgba(125, 255, 179, 0.25);
+}
+
+.network-tracker-quick-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7dffb3;
+  box-shadow: 0 0 10px rgba(125, 255, 179, 0.45);
+}
+
+.network-tracker-quick-text {
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .network-tracker-quick {
+    left: 12px;
+    bottom: 12px;
+  }
+}

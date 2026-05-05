@@ -133,6 +133,15 @@ var networkTracker = {
               try {
                 var parsed = JSON.parse(text);
                 entry.responseParsed = parsed;
+                // Сервер может вернуть logical error в JSON при HTTP 200.
+                // Такие ответы тоже должны подсвечиваться как ошибки в списке.
+                if (!entry.error && parsed && parsed.ok === false && parsed.error) {
+                  entry.error = String(parsed.error);
+                  if (response.status < 400) {
+                    networkTracker.stats.totalErrors++;
+                    countStat("byStatus", "error");
+                  }
+                }
               } catch(e) {}
             }).catch(function(){});
           } else if (ct.includes("audio") || ct.includes("mpeg")) {
@@ -243,6 +252,27 @@ var networkTracker = {
     if (m > 0) return "+" + m + "м" + (s % 60) + "с";
     return "+" + s + "с";
   }
+
+  function getTrackerErrorText(r) {
+    if (!r) return "";
+    if (r.error) return String(r.error);
+    if (r.responseParsed && r.responseParsed.ok === false && r.responseParsed.error) {
+      return String(r.responseParsed.error);
+    }
+    // Фолбэк: иногда JSON-парсинг не успевает к моменту рендера/экспорта,
+    // но responsePreview уже содержит текст ответа.
+    if (r.responsePreview && typeof r.responsePreview === "string") {
+      try {
+        var parsedPreview = JSON.parse(r.responsePreview);
+        if (parsedPreview && parsedPreview.ok === false && parsedPreview.error) {
+          return String(parsedPreview.error);
+        }
+      } catch(e) {}
+      var m = r.responsePreview.match(/"error"\s*:\s*"([^"]+)"/i);
+      if (m && m[1]) return m[1];
+    }
+    return "";
+  }
   
   function escH(s) {
     return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
@@ -278,15 +308,21 @@ var networkTracker = {
     sortBy: "time",
     expandedId: null,
     paused: true,
-    searchText: ""
+    searchText: "",
+    widgetEnabled: false
   };
 
-  // Запоминаем состояние паузы между перезагрузками
-  (function restoreTrackerPauseState() {
+  // Запоминаем состояние UI между перезагрузками
+  (function restoreTrackerUIState() {
     try {
       var raw = localStorage.getItem("mb_tracker_paused");
       if (raw === "1") trackerUI.paused = true;
       else if (raw === "0") trackerUI.paused = false;
+    } catch (e) {}
+    try {
+      var wr = localStorage.getItem("mb_tracker_widget_enabled");
+      if (wr === "0") trackerUI.widgetEnabled = false;
+      else if (wr === "1") trackerUI.widgetEnabled = true;
     } catch (e) {}
   })();
 
@@ -299,6 +335,22 @@ var networkTracker = {
     }
     var dot = document.getElementById("trackerLiveDot");
     if (dot) dot.style.animationPlayState = trackerUI.paused ? "paused" : "running";
+  }
+
+  function applyTrackerWidgetBtnUI() {
+    var btn = document.getElementById("trackerWidgetBtn");
+    if (!btn) return;
+    btn.textContent = trackerUI.widgetEnabled ? "NET" : "net";
+    btn.title = trackerUI.widgetEnabled ? "Виджет NET: включен" : "Виджет NET: выключен";
+    btn.classList.toggle("copied", trackerUI.widgetEnabled);
+  }
+
+  function emitTrackerWidgetState() {
+    try {
+      window.dispatchEvent(new CustomEvent("mb_tracker_widget_changed", {
+        detail: { enabled: !!trackerUI.widgetEnabled }
+      }));
+    } catch (e) {}
   }
   
   // ── ОТКРЫТЬ / ЗАКРЫТЬ ТРЕКЕР ──────────────────────────────────
@@ -313,6 +365,7 @@ var networkTracker = {
     if (!overlay) return;
     overlay.classList.add("show");
     applyTrackerPauseUI();
+    applyTrackerWidgetBtnUI();
     renderNetworkTracker();
     _trackerInterval = setInterval(function() {
       if (!trackerUI.paused) renderNetworkTracker();
@@ -336,13 +389,16 @@ var networkTracker = {
   <div class="monitor-card" style="max-width:min(820px,calc(100vw - 24px));width:100%;padding:0;">
     <div class="monitor-header" style="padding:14px 18px 12px;">
       <div class="monitor-title" style="font-size:12px;letter-spacing:3px;">📡 NETWORK TRACKER</div>
-      <div class="monitor-meta">
-        <div class="monitor-live-dot" id="trackerLiveDot"></div>
-        <span class="monitor-ts" id="trackerTimestamp">инициализация...</span>
+      <div class="monitor-meta" style="display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;">
         <button class="monitor-copy" id="trackerPauseBtn" onclick="toggleTrackerPause()" title="Пауза/Продолжить">⏸</button>
+        <button class="monitor-copy" id="trackerWidgetBtn" onclick="toggleTrackerWidget()" title="Виджет NET">NET</button>
         <button class="monitor-copy" id="trackerClearBtn" onclick="clearTrackerHistory()" title="Очистить">🗑</button>
         <button class="monitor-copy" id="trackerExportBtn" onclick="exportTrackerData()" title="Экспорт">⎘</button>
         <button class="monitor-close" onclick="closeNetworkTracker()">✕</button>
+        <div style="flex:1 0 100%;display:flex;justify-content:flex-end;align-items:center;gap:6px;margin-top:2px;">
+          <div class="monitor-live-dot" id="trackerLiveDot"></div>
+          <span class="monitor-ts" id="trackerTimestamp">инициализация...</span>
+        </div>
       </div>
     </div>
   
@@ -477,12 +533,13 @@ var networkTracker = {
       + '</tr></thead><tbody>';
   
     reqs.forEach(function(r) {
+      var errText = getTrackerErrorText(r);
       var isExpanded = trackerUI.expandedId === r.id;
-      var rowBg = isExpanded ? "rgba(26,159,212,0.08)" : (r.error ? "rgba(255,68,68,0.05)" : "transparent");
+      var rowBg = isExpanded ? "rgba(26,159,212,0.08)" : (errText ? "rgba(255,68,68,0.05)" : "transparent");
       var urlShort = shortenUrl(r.url);
       var actionLabel = getActionLabel(r);
-      var statusColor = r.pending ? "#f0c040" : getStatusColor(r.status);
-      var statusText = r.pending ? "⏳" : (r.status || "ERR");
+      var statusColor = r.pending ? "#f0c040" : (errText ? "#ff6b6b" : getStatusColor(r.status));
+      var statusText = r.pending ? "⏳" : (errText ? "ERR" : (r.status || "ERR"));
   
       html += '<tr onclick="toggleTrackerDetail(\'' + r.id + '\')" style="cursor:pointer;background:' + rowBg + ';border-bottom:1px solid rgba(26,159,212,0.06);transition:background 0.1s;" onmouseover="this.style.background=\'rgba(26,159,212,0.06)\'" onmouseout="this.style.background=\'' + rowBg + '\'">'
         + '<td style="padding:5px 8px;color:rgba(168,228,255,0.4);white-space:nowrap;font-size:9px;">' + fmtRelTime(r.relativeMs) + '</td>'
@@ -523,6 +580,7 @@ var networkTracker = {
   }
   
   function renderRequestDetail(r) {
+    var errText = getTrackerErrorText(r);
     var html = '<div style="padding:12px 18px;font-size:10px;display:flex;flex-wrap:wrap;gap:14px;">';
   
     // Метаданные
@@ -536,7 +594,7 @@ var networkTracker = {
     html += metaRow("Дата/Время", new Date(r.timestamp).toLocaleString("ru-RU"));
     if (r.durationMs != null) html += metaRow("Длительность", '<span style="color:' + (r.durationMs > 2000 ? "#ff9999" : r.durationMs > 500 ? "#f0c040" : "#7dffb3") + ';">' + fmtMsTracker(r.durationMs) + '</span>');
     html += metaRow("Статус", '<span style="color:' + getStatusColor(r.status) + ';font-weight:600;">' + escH(String(r.status || (r.pending ? "PENDING" : "ERR"))) + ' ' + escH(r.statusText || "") + '</span>');
-    if (r.error) html += metaRow("Ошибка", '<span style="color:#ff6b6b;">' + escH(r.error) + '</span>');
+    if (errText) html += metaRow("Ошибка", '<span style="color:#ff6b6b;">' + escH(errText) + '</span>');
     html += '</div>';
   
     // Отправленные данные
@@ -684,6 +742,13 @@ var networkTracker = {
     applyTrackerPauseUI();
     if (!trackerUI.paused) renderNetworkTracker();
   }
+
+  function toggleTrackerWidget() {
+    trackerUI.widgetEnabled = !trackerUI.widgetEnabled;
+    try { localStorage.setItem("mb_tracker_widget_enabled", trackerUI.widgetEnabled ? "1" : "0"); } catch (e) {}
+    applyTrackerWidgetBtnUI();
+    emitTrackerWidgetState();
+  }
   
   function clearTrackerHistory() {
     networkTracker.requests = [];
@@ -705,10 +770,13 @@ var networkTracker = {
     lines.push("");
     lines.push("── СТАТИСТИКА ──────────────────────────────");
     var st = networkTracker.stats;
+    var derivedErrors = networkTracker.requests.reduce(function(acc, r) {
+      return acc + (getTrackerErrorText(r) ? 1 : 0);
+    }, 0);
     lines.push("Всего запросов:   " + st.totalRequests);
     lines.push("Отправлено:       " + fmtBytesTracker(st.totalBytesSent));
     lines.push("Получено:         " + fmtBytesTracker(st.totalBytesReceived));
-    lines.push("Ошибок:           " + st.totalErrors);
+    lines.push("Ошибок:           " + Math.max(st.totalErrors, derivedErrors));
     lines.push("");
     lines.push("По категориям:");
     Object.keys(st.byType).sort().forEach(function(k) { lines.push("  " + k + ": " + st.byType[k]); });
@@ -720,7 +788,9 @@ var networkTracker = {
       lines.push("\n[" + (i+1) + "] " + new Date(r.timestamp).toLocaleTimeString("ru-RU") + " | " + r.method + " | " + r.category);
       lines.push("    URL: " + r.url);
       if (r.parsedBody) lines.push("    BODY: " + JSON.stringify(r.parsedBody));
-      lines.push("    STATUS: " + (r.status || "ERR") + " | TIME: " + fmtMsTracker(r.durationMs) + " | SENT: " + fmtBytesTracker(r.bodySize) + " | RECV: " + fmtBytesTracker(r.responseSize));
+      var errText = getTrackerErrorText(r);
+      lines.push("    STATUS: " + (errText ? "ERR" : (r.status || "ERR")) + " | TIME: " + fmtMsTracker(r.durationMs) + " | SENT: " + fmtBytesTracker(r.bodySize) + " | RECV: " + fmtBytesTracker(r.responseSize));
+      if (errText) lines.push("    ERROR: " + errText);
       if (r.responsePreview) lines.push("    RESP: " + r.responsePreview.slice(0, 200));
     });
     lines.push("\n═══════════════════════════════════════════");
