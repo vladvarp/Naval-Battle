@@ -1114,6 +1114,169 @@ color: rgba(168,228,255,0.45);
 margin-left: auto;
 }
 
+/* ── РУЧНАЯ РАССТАНОВКА КОРАБЛЕЙ ───────────────────────── */
+body.placement-open {
+overflow: hidden;
+}
+.placement-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  background: rgba(2,13,24,0.9);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  padding: 14px;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+.placement-overlay.show {
+display: flex;
+}
+.placement-card {
+width: 100%;
+max-width: 520px;
+max-height: 96vh;
+overflow: auto;
+background: rgba(4,31,53,0.98);
+border: 1px solid rgba(26,159,212,0.35);
+border-radius: 12px;
+padding: 16px;
+}
+.placement-title {
+font-family: 'Russo One', sans-serif;
+font-size: 13px;
+letter-spacing: 2px;
+color: var(--foam);
+text-align: center;
+margin-bottom: 4px;
+}
+.placement-subtitle {
+font-size: 10px;
+letter-spacing: 1px;
+color: rgba(168,228,255,0.55);
+text-align: center;
+margin-bottom: 10px;
+}
+.placement-mode-row {
+display: flex;
+gap: 8px;
+margin-bottom: 8px;
+}
+.placement-mode-row .btn.active {
+background: rgba(26,159,212,0.25);
+border-color: rgba(26,159,212,0.55);
+}
+.placement-controls {
+display: flex;
+justify-content: center;
+margin-bottom: 8px;
+min-height: 30px;
+}
+.placement-grid-wrap {
+display: flex;
+justify-content: center;
+padding: 6px 0;
+}
+.placement-grid {
+  --cell-size: min(8vw, 34px);
+  --gap: 2px;
+  position: relative;
+  width: calc(10 * var(--cell-size) + 9 * var(--gap));
+  height: calc(10 * var(--cell-size) + 9 * var(--gap));
+  display: grid;
+  grid-template-columns: repeat(10, var(--cell-size));
+  grid-template-rows: repeat(10, var(--cell-size));
+  gap: var(--gap);
+  touch-action: none;
+}
+.placement-cell {
+background: rgba(7,51,88,0.5);
+border: 1px solid rgba(10,73,117,0.6);
+border-radius: 3px;
+}
+.placement-cell.preview-ok {
+background: rgba(46,204,113,0.35);
+border-color: rgba(46,204,113,0.65);
+}
+.placement-cell.preview-bad {
+background: rgba(231,76,60,0.35);
+border-color: rgba(231,76,60,0.65);
+}
+.placement-cell.placement-conflict {
+background: rgba(231,76,60,0.28) !important;
+border-color: rgba(231,76,60,0.55) !important;
+}
+.placement-ship {
+  position: absolute;
+  height: var(--cell-size);
+  width: calc(var(--len) * var(--cell-size) + (var(--len) - 1) * var(--gap));
+  background: rgba(39,174,96,0.45);
+  border: 1px solid rgba(46,204,113,0.7);
+  border-radius: 4px;
+  cursor: grab;
+  box-shadow: 0 0 8px rgba(46,204,113,0.25);
+  touch-action: none !important;
+}
+.placement-ship:active {
+cursor: grabbing;
+}
+.placement-ship.vert {
+width: var(--cell-size);
+height: calc(var(--len) * var(--cell-size) + (var(--len) - 1) * var(--gap));
+}
+.placement-ship.placement-ship-invalid {
+background: rgba(231,76,60,0.45);
+border-color: rgba(231,76,60,0.85);
+box-shadow: 0 0 12px rgba(231,76,60,0.35);
+}
+.placement-help {
+font-size: 10px;
+letter-spacing: 1px;
+color: rgba(168,228,255,0.5);
+text-align: center;
+margin: 8px 0 6px;
+}
+.placement-fleet {
+display: flex;
+gap: 6px;
+flex-wrap: wrap;
+justify-content: center;
+min-height: 42px;
+padding: 4px 0;
+}
+.placement-fleet-item {
+  background: rgba(2,13,24,0.5);
+  border: 1px solid rgba(26,159,212,0.28);
+  border-radius: 6px;
+  padding: 6px;
+  cursor: grab;
+  touch-action: none !important;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+.placement-fleet-item:active {
+cursor: grabbing;
+}
+.placement-fleet-shape {
+display: block;
+height: 12px;
+width: calc(var(--len) * 12px + (var(--len) - 1) * 2px);
+background: rgba(39,174,96,0.5);
+border: 1px solid rgba(46,204,113,0.75);
+border-radius: 3px;
+}
+.placement-actions {
+display: flex;
+gap: 8px;
+margin-top: 10px;
+}
+
 /* ── ОЖИДАНИЕ ─────────────────────────────────────────── */
 .waiting-msg { text-align: center; padding: 40px 20px; }
 .waiting-msg .icon { font-size: 48px; margin-bottom: 16px; animation: wave 3s ease-in-out infinite; display: block; }

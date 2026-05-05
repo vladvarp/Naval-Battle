@@ -141,6 +141,97 @@ function generateShips() {
   return grid;
 }
 
+function normalizeManualBoard(rawBoard) {
+  if (!rawBoard || !Array.isArray(rawBoard) || rawBoard.length !== 10) return null;
+  var board = [];
+  for (var y = 0; y < 10; y++) {
+    if (!Array.isArray(rawBoard[y]) || rawBoard[y].length !== 10) return null;
+    board.push([]);
+    for (var x = 0; x < 10; x++) {
+      board[y].push(rawBoard[y][x] ? 1 : 0);
+    }
+  }
+  return board;
+}
+
+function validateFleetBoard(board) {
+  if (!board) return false;
+  var visited = {};
+  var lengths = [];
+
+  function inRange(x, y) {
+    return x >= 0 && x < 10 && y >= 0 && y < 10;
+  }
+
+  for (var y = 0; y < 10; y++) {
+    for (var x = 0; x < 10; x++) {
+      if (board[y][x] !== 1 || visited[y + "_" + x]) continue;
+
+      var queue = [{ x: x, y: y }];
+      var cells = [];
+      visited[y + "_" + x] = true;
+
+      while (queue.length) {
+        var cur = queue.pop();
+        cells.push(cur);
+        var dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+        for (var d = 0; d < dirs.length; d++) {
+          var nx = cur.x + dirs[d][0];
+          var ny = cur.y + dirs[d][1];
+          var k = ny + "_" + nx;
+          if (!inRange(nx, ny) || visited[k]) continue;
+          if (board[ny][nx] === 1) {
+            visited[k] = true;
+            queue.push({ x: nx, y: ny });
+          }
+        }
+      }
+
+      var sameX = true, sameY = true;
+      for (var i = 1; i < cells.length; i++) {
+        if (cells[i].x !== cells[0].x) sameX = false;
+        if (cells[i].y !== cells[0].y) sameY = false;
+      }
+      if (!sameX && !sameY) return false;
+
+      for (var c = 0; c < cells.length; c++) {
+        for (var dy = -1; dy <= 1; dy++) {
+          for (var dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            var tx = cells[c].x + dx;
+            var ty = cells[c].y + dy;
+            if (!inRange(tx, ty) || board[ty][tx] !== 1) continue;
+            var belongs = false;
+            for (var j = 0; j < cells.length; j++) {
+              if (cells[j].x === tx && cells[j].y === ty) {
+                belongs = true;
+                break;
+              }
+            }
+            if (!belongs) return false;
+          }
+        }
+      }
+
+      lengths.push(cells.length);
+    }
+  }
+
+  lengths.sort(function(a, b){ return a - b; });
+  var expected = [1,1,1,1,2,2,2,3,3,4];
+  if (lengths.length !== expected.length) return false;
+  for (var k = 0; k < expected.length; k++) {
+    if (lengths[k] !== expected[k]) return false;
+  }
+  return true;
+}
+
+function resolvePlayerShips(data) {
+  var board = normalizeManualBoard(data && data.shipBoard);
+  if (board && validateFleetBoard(board)) return board;
+  return generateShips();
+}
+
 // ── РАБОТА С КОМНАТАМИ ──────────────────────────────────────
 function readRooms() {
   var sheet = getSheet(SHEET_NAME_ROOMS);
@@ -292,7 +383,7 @@ function createRoom(data) {
 
   var roomId   = generateRoomId();
   var playerId = generateId();
-  var ships    = generateShips();
+  var ships    = resolvePlayerShips(data);
   var now      = new Date().toISOString();
 
   // Создаём комнату
@@ -332,7 +423,7 @@ function joinRoom(data) {
   }
 
   var playerId = generateId();
-  var ships    = generateShips();
+  var ships    = resolvePlayerShips(data);
   var now      = new Date().toISOString();
 
   // Добавляем второго игрока

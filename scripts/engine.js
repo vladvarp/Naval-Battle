@@ -330,9 +330,11 @@ function closeAdminConfirm(confirmed) {
 // ── СОЗДАТЬ КОМНАТУ ───────────────────────────────────────────
 async function createRoom() {
   if (!state.nickname) return;
+  var board = await openPlacementSetup({ context: "online", defaultMode: "random" });
+  if (!board) return;
   showCreateMsg("Создание комнаты...", "info");
   try {
-    var res = await apiPost({ action: "createRoom", nickname: state.nickname });
+    var res = await apiPost({ action: "createRoom", nickname: state.nickname, shipBoard: board });
     if (!res.ok) { showCreateMsg(res.error, "error"); return; }
     state.playerId = res.playerId;
     state.mySlot   = res.slot;
@@ -346,8 +348,10 @@ async function createRoom() {
 // ── ВОЙТИ В КОМНАТУ ───────────────────────────────────────────
 async function joinRoom(roomId) {
   if (!state.nickname) return;
+  var board = await openPlacementSetup({ context: "online", defaultMode: "random" });
+  if (!board) return;
   try {
-    var res = await apiPost({ action: "joinRoom", nickname: state.nickname, roomId: roomId });
+    var res = await apiPost({ action: "joinRoom", nickname: state.nickname, roomId: roomId, shipBoard: board });
     if (!res.ok) {
       // Показываем ошибку в лобби
       document.getElementById("createMsg").innerHTML =
@@ -1686,6 +1690,7 @@ function soloPlaceShips() {
         placed = true;
       }
     }
+    if (!placed) return soloPlaceShips();
   }
   return board;
 }
@@ -1743,15 +1748,20 @@ function applyDiagonalMisses(gridId, x, y, isEnemy) {
 }
 
 // ── ИНИЦИАЛИЗАЦИЯ СОЛО-ИГРЫ ───────────────────────────────────
-async function startSoloGame() {
+async function startSoloGame(preparedBoard) {
   if (!state.nickname) return;
+  var board = preparedBoard;
+  if (!board) {
+    board = await openPlacementSetup({ context: "solo", defaultMode: "random" });
+    if (!board) return;
+  }
   stopLobbyPolling();
 
   // Инициализируем состояние
   solo.active  = true;
   state.inputLocked = false;   // ← добавить
   unlockInput();               // ← добавить
-  solo.myBoard = soloPlaceShips();
+  solo.myBoard = board;
   solo.aiBoard = soloPlaceShips();
   solo.shotsP1 = [];
   solo.shotsP2 = [];
