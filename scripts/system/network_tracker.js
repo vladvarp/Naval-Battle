@@ -387,18 +387,22 @@ var networkTracker = {
     div.style.cssText = "z-index:2200;padding:8px 12px;";
     div.innerHTML = `
   <div class="monitor-card" style="max-width:min(820px,calc(100vw - 24px));width:100%;padding:0;">
-    <div class="monitor-header" style="padding:14px 18px 12px;">
-      <div class="monitor-title" style="font-size:12px;letter-spacing:3px;">📡 NETWORK TRACKER</div>
-      <div class="monitor-meta" style="display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;">
-        <button class="monitor-copy" id="trackerPauseBtn" onclick="toggleTrackerPause()" title="Пауза/Продолжить">⏸</button>
-        <button class="monitor-copy" id="trackerWidgetBtn" onclick="toggleTrackerWidget()" title="Виджет NET">NET</button>
-        <button class="monitor-copy" id="trackerClearBtn" onclick="clearTrackerHistory()" title="Очистить">🗑</button>
-        <button class="monitor-copy" id="trackerExportBtn" onclick="exportTrackerData()" title="Экспорт">⎘</button>
+    <div class="monitor-header" style="display:block;padding:10px 18px 12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:10px;">
+        <div class="monitor-title" style="font-size:12px;letter-spacing:3px;line-height:1.1;">📡 NETWORK TRACKER</div>
         <button class="monitor-close" onclick="closeNetworkTracker()">✕</button>
-        <div style="flex:1 0 100%;display:flex;justify-content:flex-end;align-items:center;gap:6px;margin-top:2px;">
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div class="monitor-meta" style="display:flex;justify-content:flex-end;gap:8px;">
+          <button class="monitor-copy" id="trackerPauseBtn" onclick="toggleTrackerPause()" title="Пауза/Продолжить">⏸</button>
+          <button class="monitor-copy" id="trackerWidgetBtn" onclick="toggleTrackerWidget()" title="Виджет NET">NET</button>
+          <button class="monitor-copy" id="trackerClearBtn" onclick="clearTrackerHistory()" title="Очистить">🗑</button>
+          <button class="monitor-copy" id="trackerExportBtn" onclick="exportTrackerData()" title="Экспорт">⎘</button>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;margin-top:4px;">
           <div class="monitor-live-dot" id="trackerLiveDot"></div>
           <span class="monitor-ts" id="trackerTimestamp">инициализация...</span>
-        </div>
       </div>
     </div>
   
@@ -424,7 +428,7 @@ var networkTracker = {
       <span id="trackerCount" style="font-size:9px;color:rgba(168,228,255,0.35);letter-spacing:1px;white-space:nowrap;"></span>
     </div>
   
-    <div id="trackerBody" style="padding:0;max-height:min(62vh,520px);overflow-y:auto;"></div>
+    <div id="trackerBody" style="padding:0;max-height:min(62vh,520px);overflow-y:auto;overflow-x:auto;"></div>
   
     <div id="trackerDetailPanel" style="display:none;border-top:1px solid rgba(26,159,212,0.15);background:rgba(2,13,24,0.7);padding:14px 18px;max-height:260px;overflow-y:auto;"></div>
   </div>`;
@@ -485,6 +489,19 @@ var networkTracker = {
   
     bar.innerHTML = html;
   }
+
+  function calcTrackerTableMinWidth(reqs) {
+    // Базовая ширина под фиксированные колонки + запас под URL/действие.
+    var maxLen = 0;
+    (reqs || []).slice(0, 60).forEach(function(r) {
+      var action = getActionLabel(r) || "";
+      var url = shortenUrl(r.url || "");
+      var lineLen = Math.max(action.length, url.length);
+      if (lineLen > maxLen) maxLen = lineLen;
+    });
+    var urlCol = Math.max(170, Math.min(300, Math.round(maxLen * 4.2)));
+    return 360 + urlCol;
+  }
   
   function renderTrackerList() {
     var body = document.getElementById("trackerBody");
@@ -521,7 +538,8 @@ var networkTracker = {
       return;
     }
   
-    var html = '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
+    var tableMinWidth = calcTrackerTableMinWidth(reqs);
+    var html = '<table style="width:100%;min-width:' + tableMinWidth + 'px;border-collapse:collapse;font-size:10px;">';
     html += '<thead><tr style="background:rgba(2,13,24,0.9);position:sticky;top:0;z-index:5;">'
       + '<th style="padding:6px 8px;text-align:left;font-size:8px;letter-spacing:1.5px;color:rgba(168,228,255,0.35);font-weight:600;border-bottom:1px solid rgba(26,159,212,0.15);width:52px;">ВРЕМЯ</th>'
       + '<th style="padding:6px 8px;text-align:left;font-size:8px;letter-spacing:1.5px;color:rgba(168,228,255,0.35);font-weight:600;border-bottom:1px solid rgba(26,159,212,0.15);width:72px;">КАТ.</th>'
