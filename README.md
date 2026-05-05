@@ -7,7 +7,7 @@
 ## Архитектура
 
 ```
-[Браузер]  ←→  [index.html + scripts/*.js]  ←→  [Web App Apps Script]  ←→  [Google Sheets]
+[Браузер]  ←→  [index.html + scripts/** + styles/**]  ←→  [Web App Apps Script]  ←→  [Google Sheets]
 ```
 
 
@@ -119,6 +119,7 @@ var API_URL = "...";
 
 - **Активные комнаты** — после ввода пароля загружается таблица комнат; кнопка **«Удалить»** вызывает действие `restart` с `roomId` (комната и игроки удаляются на сервере).
 - **Монитор** / **Трекер** — диагностика клиента и сетевых запросов.
+- **GAS Ping Monitor** — компактный индикатор задержки до Google Apps Script в PvP (с порогами качества и предупреждением при длительной/критической задержке).
 - **Аудио-кэш** / **Рандом** — состояние загрузки звуков и веса случайного выбора.
 - Переключатель движка звука (**HTML Audio** ↔ **Web Audio**) — перезагрузка страницы; версия сохраняется в `localStorage` (`navalAudioEngine`).
 
@@ -132,13 +133,18 @@ var API_URL = "...";
 | Путь                                             | Назначение                                                                                                                    |
 | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
 | `index.html`                                     | Разметка экранов входа, лобби, боя, оверлеи                                                                                   |
-| `styles/`                                        | Стили, в т.ч. `main.css`, админ, iOS-подсказка                                                                                |
+| `styles/`                                        | Стили, в т.ч. `main.css`, `admin_monitor.css`, `ios_silent_note.css`, `ping_monitor.css`                                     |
 | `scripts/client.js`                              | `API_URL`, константы опроса                                                                                                   |
 | `scripts/engine.js`                              | Игровая логика, сеть, соло-ИИ, админ-комнаты                                                                                  |
-| `scripts/admin_monitor.js`, `network_tracker.js` | Диагностика                                                                                                                   |
-| `scripts/audio_engine/`                          | `audio_switcher.js`, `audio_v1.js`, `audio_v2.js`, `audio_pool.js`                                                            |
-| `scripts/ios_silent_note.js`                     | Подсказка про режим «Беззвучный» на iPhone                                                                                    |
-| `scripts/mouse_easteregg.js`                     | Пасхалка / мелкое поведение мыши (не влияет на сеть)                                                                          |
+| `scripts/system/admin_monitor.js`                | Монитор системы в админ-панели: состояние клиента, аудио, runtime-метрики                                                    |
+| `scripts/system/network_tracker.js`              | Подробный трекер сетевых запросов: перехват `fetch`, статистика, экспорт                                                      |
+| `scripts/system/ping_monitor.js`                 | Индикатор задержки до Google Apps Script (GAS) в PvP + предупреждения при критической задержке                               |
+| `scripts/system/ios_silent_note.js`              | Подсказка про режим «Беззвучный» на iPhone                                                                                    |
+| `scripts/system/mouse_easteregg.js`              | Пасхалка / мелкое поведение мыши (не влияет на сеть)                                                                          |
+| `scripts/audio_engine/audio_switcher.js`         | Переключение аудио-движка (`v1` HTML Audio / `v2` Web Audio) через `localStorage` и перезагрузку                             |
+| `scripts/audio_engine/audio_v1.js`               | Аудио-движок v1 на `HTMLAudioElement` (очередь/кэш браузерных `Audio`)                                                        |
+| `scripts/audio_engine/audio_v2.js`               | Аудио-движок v2 на `Web Audio API` (AudioContext, AudioBuffer, параллельное воспроизведение)                                 |
+| `scripts/audio_engine/audio_pool.js`             | Таблицы аудио-пулов по событиям (какие mp3 и с какими индексами доступны для рандома)                                        |
 | `sw.js`                                          | Service Worker: кэш GET для `./audio/*.mp3`                                                                                   |
 | `audio/`                                         | MP3 по событиям (подпапки по типу события; большой бинарный контент)                                                          |
 | `backend/Code.gs`                                | Серверная логика для Google Apps Script                                                                                       |
@@ -199,6 +205,7 @@ var API_URL = "...";
 | Ошибка подключения к API                  | `API_URL` в `scripts/client.js`, доступность Web App                 |
 | CORS / блокировка                         | У развёртывания доступ **«Все»**, не только аккаунт Google           |
 | Медленные обновления                      | Задержки Apps Script (1–3 с возможны); интервал опроса в `client.js` |
+| Длительная задержка в индикаторе GAS      | Проверить сеть/канал, затем перезагрузить страницу                    |
 | Звуки не с кэшем / не с SW                | Открывайте сайт через `http(s)://`, не `file://`                     |
 | На iPhone нет звука                       | Режим «Беззвучный» и политика iOS к веб-аудио — см. подсказку в игре |
 | После правки `Code.gs` ничего не меняется | Новое развёртывание или обновление версии Web App в Google           |

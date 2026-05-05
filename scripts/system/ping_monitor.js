@@ -269,7 +269,7 @@
       var sent = this.last.sentAt ? fmtTime(this.last.sentAt) : "—";
       var recv = this.last.receivedAt ? fmtTime(this.last.receivedAt) : (this.inFlight ? "ожидание..." : "—");
 
-      this.elText.textContent = "GAS " + showRtt;
+      this.elText.textContent = "GAS";
       this.el.style.borderColor = q.color + "55";
 
       // 3 строки по запросу: Apps Script / отдача / получение
