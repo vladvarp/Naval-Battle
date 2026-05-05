@@ -1,0 +1,137 @@
+/* ============================================================
+   NAVAL COMBAT — Apps Script Ping Monitor
+   styles/ping_monitor.css
+   ============================================================ */
+
+.ping-indicator {
+  position: fixed;
+  bottom: 12px;
+  left: 34px; /* левый нижний угол */
+  z-index: 1200;
+
+  display: none;
+  align-items: center;
+  gap: 8px;
+
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(2, 13, 24, 0.72);
+  border: 1px solid rgba(26, 159, 212, 0.2);
+  backdrop-filter: blur(6px);
+
+  font-family: "Share Tech Mono", monospace;
+  letter-spacing: 0.8px;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ping-indicator .ping-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.ping-indicator .ping-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(168, 228, 255, 0.55);
+  opacity: 0.95;
+  flex-shrink: 0;
+}
+
+.ping-indicator .ping-text {
+  font-size: 10px;
+  color: rgba(232, 244, 255, 0.9);
+  white-space: nowrap;
+}
+
+/* Подсказка: раскрывается на hover */
+.ping-indicator .ping-tip {
+  display: none;
+
+  font-size: 9px;
+  line-height: 1.25;
+  color: rgba(168, 228, 255, 0.65);
+
+  white-space: pre-line; /* переносы из \n */
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  max-width: min(78vw, 520px);
+}
+
+.ping-indicator:hover .ping-tip {
+  display: block;
+}
+
+/* ── Предупреждение о плохой связи (вверху/центр) ───────────── */
+@keyframes pingWarnBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.ping-warn {
+  position: fixed;
+  top: 33vh; /* визуально ~1/3 экрана по высоте */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 107, 107, 0.55);
+  background: rgba(2, 13, 24, 0.92);
+  backdrop-filter: blur(6px);
+
+  font-family: "Share Tech Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.8px;
+  color: rgba(255, 220, 220, 0.95);
+  text-align: center;
+  max-width: min(92vw, 680px);
+
+  animation: pingWarnBlink 0.85s ease-in-out infinite;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.35);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ping-warn .ping-warn-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff6b6b;
+  box-shadow: 0 0 14px rgba(255,107,107,0.55);
+  flex-shrink: 0;
+}
+
+.ping-warn.show { display: flex; }
+
+@media (max-width: 520px) {
+  /* На телефонах фиксируем ширину индикатора */
+  .ping-indicator {
+    left: 12px;
+    bottom: 12px;
+    max-width: calc(100vw - 24px);
+    gap: 10px;
+  }
+
+  .ping-indicator .ping-tip {
+    display: none;
+    max-width: 100%;
+  }
+
+  .ping-warn {
+    top: 30vh;
+    padding: 10px 12px;
+    font-size: 10px;
+    border-radius: 12px;
+  }
+}
+
