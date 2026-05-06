@@ -31,7 +31,7 @@ for folder_name in os.listdir(AUDIO_DIR):
         folder_counts[folder_name] = count
         print(f"📁 {folder_name} → {count} mp3")
 
-# Читаем index.html
+# Читаем файл
 content = INDEX_FILE.read_text(encoding="utf-8")
 updated = 0
 
@@ -60,11 +60,35 @@ def replace_files(match):
 
 content = re.sub(pattern, replace_files, content)
 
-# Сохраняем, если были изменения
+# Сохраняем, если были изменения makeFiles
 if updated > 0:
     INDEX_FILE.write_text(content, encoding="utf-8")
     print(f"\n🎉 Готово! Обновлено {updated} записей в AUDIO_EVENTS")
 else:
     print("\n✅ Всё уже актуально, ничего менять не пришлось")
+
+# --- Обновляем RANDOM_POOL_SIZE ---
+# Перечитываем актуальный контент (после возможных изменений выше)
+content = INDEX_FILE.read_text(encoding="utf-8")
+
+all_make_files = re.findall(r'makeFiles\((\d+)\)', content)
+if all_make_files:
+    max_count = max(int(n) for n in all_make_files)
+
+    pool_pattern = r'(var\s+RANDOM_POOL_SIZE\s*=\s*)(\d+)(\s*;)'
+    pool_match = re.search(pool_pattern, content)
+
+    if pool_match:
+        old_pool_size = int(pool_match.group(2))
+        if old_pool_size != max_count:
+            content = re.sub(pool_pattern, lambda m: f"{m.group(1)}{max_count}{m.group(3)}", content)
+            INDEX_FILE.write_text(content, encoding="utf-8")
+            print(f"\n🔢 RANDOM_POOL_SIZE: {old_pool_size} → {max_count}")
+        else:
+            print(f"\n✅ RANDOM_POOL_SIZE уже актуален: {old_pool_size}")
+    else:
+        print("\n⚠️ Строка 'var RANDOM_POOL_SIZE = ...' не найдена в файле!")
+else:
+    print("\n⚠️ Не найдено ни одного makeFiles(...) в файле!")
 
 print("\nСкрипт завершён.")

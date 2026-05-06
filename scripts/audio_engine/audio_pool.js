@@ -1,7 +1,7 @@
 // Пул рандомайзера: случайное число 0..(RANDOM_POOL_SIZE-1), затем % n → индекс файла.
 // makeFiles(10),  число 304 → 304%10=4  → 5.mp3
 // makeFiles(40),  число 304 → 304%40=24 → 25.mp3
-var RANDOM_POOL_SIZE = 100;
+var RANDOM_POOL_SIZE = 47;
 
 function makeFiles(n) {
   var arr = [];
@@ -11,18 +11,18 @@ function makeFiles(n) {
 function makeFiles10() { return makeFiles(10); }
 
 var AUDIO_EVENTS = [
-  { id: "gameStart", label: "🎮 - 1️⃣",                    folder: "audio/gameStart", files: makeFiles(23) }, // "🎮 Начало игры"
-  { id: "gameWin",   label: "🏆 - 1️⃣",                    folder: "audio/gameWin",   files: makeFiles(10) }, // "🏆 Победа"
-  { id: "gameLose",  label: "💀 - 1️⃣",                    folder: "audio/gameLose",  files: makeFiles(10) }, // "💀 Поражение"
-  { id: "shoot",     label: "💥 - 1️⃣",                    folder: "audio/shoot",     files: makeFiles(47) }, // "💥 Выстрел наш"
-  { id: "hitEnemy",  label: "🎯 - 1️⃣",                    folder: "audio/hitEnemy",  files: makeFiles(30) }, // "🎯 Попадение по противнику"
-  { id: "hitMe",     label: "🎯 - 2️⃣",                    folder: "audio/hitMe",     files: makeFiles(30) }, // "🎯 Попадение по нам"
-  { id: "sunkMe",    label: "⚓ - 1️⃣",                    folder: "audio/sunkMe",    files: makeFiles(31) }, // "⚓ Корабль потоплен наш"
-  { id: "sunkEnemy", label: "⚓ - 2️⃣",                    folder: "audio/sunkEnemy", files: makeFiles(30) }, // "⚓ Корабль потоплен противника"
-  { id: "miss",      label: "🌊 - 1️⃣",                    folder: "audio/miss",      files: makeFiles(46) }, // "🌊 Промах наш"
-  { id: "enemyMiss", label: "🌊 - 2️⃣",                    folder: "audio/enemyMiss", files: makeFiles(32) }, // "🌊 Промах противника"
-  { id: "turnMine",  label: "⏳ - 1️⃣",                    folder: "audio/turnMine",  files: makeFiles(31) }, // "⏳ Ход наш"
-  { id: "turnEnemy", label: "⏳ - 2️⃣",                    folder: "audio/turnEnemy", files: makeFiles(29) }, // "⏳ Ход противника"
+  { id: "gameStart", label: "gameStart",                    folder: "audio/gameStart", files: makeFiles(23) }, // "🎮 Начало игры"
+  { id: "gameWin",   label: "gameWin",                      folder: "audio/gameWin",   files: makeFiles(10) }, // "🏆 Победа"
+  { id: "gameLose",  label: "gameLose",                     folder: "audio/gameLose",  files: makeFiles(10) }, // "💀 Поражение"
+  { id: "shoot",     label: "shoot",                        folder: "audio/shoot",     files: makeFiles(47) }, // "💥 Выстрел наш"
+  { id: "hitMe",     label: "hitMe",                        folder: "audio/hitMe",     files: makeFiles(34) }, // "🎯 Попадение по нам"
+  { id: "hitEnemy",  label: "hitEnemy",                     folder: "audio/hitEnemy",  files: makeFiles(33) }, // "🎯 Попадение по противнику"
+  { id: "sunkMe",    label: "sunkMe",                       folder: "audio/sunkMe",    files: makeFiles(33) }, // "⚓ Корабль потоплен наш"
+  { id: "sunkEnemy", label: "sunkEnemy",                    folder: "audio/sunkEnemy", files: makeFiles(33) }, // "⚓ Корабль потоплен противника"
+  { id: "miss",      label: "miss",                         folder: "audio/miss",      files: makeFiles(47) }, // "🌊 Промах наш"
+  { id: "enemyMiss", label: "enemyMiss",                    folder: "audio/enemyMiss", files: makeFiles(35) }, // "🌊 Промах противника"
+  { id: "turnMine",  label: "turnMine",                     folder: "audio/turnMine",  files: makeFiles(34) }, // "⏳ Ход наш"
+  { id: "turnEnemy", label: "turnEnemy",                    folder: "audio/turnEnemy", files: makeFiles(32) }, // "⏳ Ход противника"
 ];
 
 var audioState = {
