@@ -248,7 +248,7 @@ function renderRooms(rooms) {
           '<span class="room-idle ' + idleClass + '">⏱ ' + idleText + '</span>' +
         '</div>' +
       '</div>' +
-      '<button class="btn btn-primary btn-sm" style="width:auto;flex-shrink:0;" onclick="joinRoom(\'' + r.roomId + '\')">ВОЙТИ</button>' +
+      '<button class="btn btn-primary btn-sm" style="width:auto;flex-shrink:0;" onclick="joinRoom(\'' + r.roomId + '\', \'' + escapeHtml(r.player1Nick || "") + '\')">ВОЙТИ</button>' +
     '</div>';
   });
   list.innerHTML = html;
@@ -346,14 +346,28 @@ async function createRoom() {
 }
 
 // ── ВОЙТИ В КОМНАТУ ───────────────────────────────────────────
-async function joinRoom(roomId) {
+async function joinRoom(roomId, ownerNick) {
   if (!state.nickname) return;
+
+  // ── ЗАЩИТА ОТ ВХОДА ПОД ТЕМ ЖЕ НИКОМ, ЧТО У СОЗДАТЕЛЯ ──
+  if (ownerNick && 
+      String(state.nickname).trim().toLowerCase() === String(ownerNick).trim().toLowerCase()) {
+    
+    document.getElementById("createMsg").innerHTML = 
+      '<div class="message message-error">' +
+      'Никнейм уже используется создателем комнаты.<br>' +
+      '<strong>Нельзя войти под тем же ником!</strong>' +
+      '</div>';
+    return;
+  }
+
   var board = await openPlacementSetup({ context: "online", defaultMode: "random" });
   if (!board) return;
+
   try {
     var res = await apiPost({ action: "joinRoom", nickname: state.nickname, roomId: roomId, shipBoard: board });
     if (!res.ok) {
-      // Показываем ошибку в лобби
+      // Показываем ошибку от сервера
       document.getElementById("createMsg").innerHTML =
         '<div class="message message-error">' + res.error + '</div>';
       return;
