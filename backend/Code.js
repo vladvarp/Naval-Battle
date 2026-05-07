@@ -1,50 +1,80 @@
 // ============================================================
 // МОРСКОЙ БОЙ — Google Apps Script Backend
-// Версия: 2.0 — Система комнат
+// Версия: 3.0 — Система комнат + Красивое оформление таблиц
 // Все комментарии на русском языке
 // ============================================================
 
 // ── НАСТРОЙКИ ──────────────────────────────────────────────
-var ADMIN_PASSWORD      = "admin";
-var SHEET_NAME_ROOMS    = "Комнаты";
-var SHEET_NAME_PLAYERS  = "Игроки";
-var SHEET_NAME_STATE    = "Состояние";
-var SHEET_NAME_LOG      = "Журнал";
-var ROOM_TIMEOUT_MS     = 10 * 60 * 1000; // 10 минут бездействия
+var ADMIN_PASSWORD           = "admin";
+var SHEET_NAME_ROOMS         = "Комнаты";
+var SHEET_NAME_PLAYERS       = "Игроки";
+var SHEET_NAME_STATE         = "Состояние";
+var SHEET_NAME_LOG           = "Журнал выстрелов";
+var SHEET_NAME_DETAIL_LOG    = "Детальный лог";
+var SHEET_NAME_HISTORY       = "История игр";
+var SHEET_NAME_STATS         = "Статистика";
+var ROOM_TIMEOUT_MS          = 10 * 60 * 1000; // 10 минут бездействия
+var FORMAT_VERSION           = "v3.0"; // Увеличить при изменении структуры
+
+// ── ЦВЕТОВАЯ ПАЛИТРА (тема «Морской бой») ──────────────────
+var CLR = {
+  NAVY:        "#1a3a5c",   // Тёмно-синий — шапки
+  OCEAN:       "#1e6091",   // Средне-синий — подзаголовки
+  WAVE:        "#2e86ab",   // Голубой — акцент
+  SEAFOAM:     "#d4eaf7",   // Светло-голубой — чётные строки
+  WHITE:       "#ffffff",   // Белый — нечётные строки
+  GOLD:        "#f4a261",   // Золотой — победитель / особые ячейки
+  GREEN:       "#2a9d8f",   // Зелёный — hit / активные
+  RED:         "#e63946",   // Красный — miss / ошибки
+  GRAY:        "#6c757d",   // Серый — неактивные
+  LIGHT_GRAY:  "#f8f9fa",   // Светло-серый — фон Stats
+  HEADER_TEXT: "#ffffff",   // Белый текст заголовков
+  DARK_TEXT:   "#212529",   // Тёмный текст данных
+};
 
 // ── ОБРАБОТЧИК GET-ЗАПРОСОВ ─────────────────────────────────
 function doGet(e) {
   var action = e.parameter.action || "";
+  var startTime = new Date();
+  var response;
   try {
-    if (action === "state")    return jsonResponse(getState(e.parameter.playerId, e.parameter.roomId));
-    if (action === "getRooms") return jsonResponse(getRooms());
-    return jsonResponse({ ok: false, error: "Неизвестное действие" });
+    if (action === "state")    response = getState(e.parameter.playerId, e.parameter.roomId);
+    else if (action === "getRooms") response = getRooms();
+    else response = { ok: false, error: "Неизвестное действие" };
   } catch (err) {
-    return jsonResponse({ ok: false, error: err.message });
+    response = { ok: false, error: err.message };
   }
+  _writeDetailLog("GET", action, e.parameter, response, startTime);
+  return jsonResponse(response);
 }
 
 // ── ОБРАБОТЧИК POST-ЗАПРОСОВ ────────────────────────────────
 function doPost(e) {
   var data = {};
+  var startTime = new Date();
   try {
     data = JSON.parse(e.postData.contents);
   } catch (err) {
-    return jsonResponse({ ok: false, error: "Неверный JSON" });
+    var errResp = { ok: false, error: "Неверный JSON" };
+    _writeDetailLog("POST", "unknown", {}, errResp, startTime);
+    return jsonResponse(errResp);
   }
 
   var action = data.action || "";
+  var response;
   try {
-    if (action === "createRoom") return jsonResponse(createRoom(data));
-    if (action === "joinRoom")   return jsonResponse(joinRoom(data));
-    if (action === "move")       return jsonResponse(makeMove(data));
-    if (action === "restart")    return jsonResponse(restartGame(data));
-    if (action === "listRoomsAdmin") return jsonResponse(listRoomsAdmin(data));
-    if (action === "leave")      return jsonResponse(leaveGame(data));
-    return jsonResponse({ ok: false, error: "Неизвестное действие: " + action });
+    if      (action === "createRoom")      response = createRoom(data);
+    else if (action === "joinRoom")        response = joinRoom(data);
+    else if (action === "move")            response = makeMove(data);
+    else if (action === "restart")         response = restartGame(data);
+    else if (action === "listRoomsAdmin")  response = listRoomsAdmin(data);
+    else if (action === "leave")           response = leaveGame(data);
+    else response = { ok: false, error: "Неизвестное действие: " + action };
   } catch (err) {
-    return jsonResponse({ ok: false, error: err.message });
+    response = { ok: false, error: err.message };
   }
+  _writeDetailLog("POST", action, data, response, startTime);
+  return jsonResponse(response);
 }
 
 // ── ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: JSON-ответ ────────────────────
@@ -54,7 +84,7 @@ function jsonResponse(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// ── ПОЛУЧЕНИЕ ЛИСТОВ ТАБЛИЦЫ ────────────────────────────────
+// ── ПОЛУЧЕНИЕ ЛИСТА (создаёт если нет) ─────────────────────
 function getSheet(name) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(name);
@@ -62,24 +92,510 @@ function getSheet(name) {
   return sheet;
 }
 
-// ── ИНИЦИАЛИЗАЦИЯ СТРУКТУРЫ ТАБЛИЦЫ ────────────────────────
+// ── ИНИЦИАЛИЗАЦИЯ И ФОРМАТИРОВАНИЕ ТАБЛИЦЫ ─────────────────
 function initSheets() {
-  // Лист комнат: roomId | player1Id | player1Nick | player2Id | player2Nick | phase | lastActivity | shotsP1 | shotsP2 | winner | turn
-  var rs = getSheet(SHEET_NAME_ROOMS);
-  if (rs.getLastRow() === 0) {
-    rs.appendRow(["roomId","player1Id","player1Nick","player2Id","player2Nick","phase","lastActivity","shotsP1","shotsP2","winner","turn"]);
+  var props = PropertiesService.getScriptProperties();
+  var formatted = props.getProperty("formatVersion");
+  if (formatted === FORMAT_VERSION) return; // уже настроено
+
+  _setupRoomsSheet();
+  _setupPlayersSheet();
+  _setupLogSheet();
+  _setupDetailLogSheet();
+  _setupHistorySheet();
+  _setupStatsSheet();
+  _setupStateSheet();
+  _reorderSheets();
+
+  props.setProperty("formatVersion", FORMAT_VERSION);
+}
+
+// Принудительно переформатировать (вызывать вручную при необходимости)
+function forceReinitSheets() {
+  PropertiesService.getScriptProperties().deleteProperty("formatVersion");
+  initSheets();
+}
+
+// ── УПОРЯДОЧИТЬ ЛИСТЫ ───────────────────────────────────────
+function _reorderSheets() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var order = [
+    SHEET_NAME_ROOMS,
+    SHEET_NAME_PLAYERS,
+    SHEET_NAME_HISTORY,
+    SHEET_NAME_STATS,
+    SHEET_NAME_LOG,
+    SHEET_NAME_DETAIL_LOG,
+    SHEET_NAME_STATE
+  ];
+  for (var i = 0; i < order.length; i++) {
+    var s = ss.getSheetByName(order[i]);
+    if (s) ss.setActiveSheet(s), ss.moveActiveSheet(i + 1);
+  }
+}
+
+// ── НАСТРОЙКА ЛИСТА «КОМНАТЫ» ───────────────────────────────
+function _setupRoomsSheet() {
+  var sheet = getSheet(SHEET_NAME_ROOMS);
+  sheet.setTabColor(CLR.NAVY);
+
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow([
+      "🏠 ID Комнаты", "👤 ID Игрока 1", "🎮 Никнейм 1",
+      "👤 ID Игрока 2", "🎮 Никнейм 2",
+      "📊 Статус", "🕐 Последняя активность",
+      "🎯 Выстрелы П1 (JSON)", "🎯 Выстрелы П2 (JSON)",
+      "🏆 Победитель ID", "🔄 Чей ход (ID)"
+    ]);
   }
 
-  // Лист игроков: playerId | nickname | roomId | slot | shipBoard | lastSeen
-  var ps = getSheet(SHEET_NAME_PLAYERS);
-  if (ps.getLastRow() === 0) {
-    ps.appendRow(["playerId","nickname","roomId","slot","shipBoard","lastSeen"]);
+  // Ширины столбцов
+  var widths = [100, 150, 120, 150, 120, 100, 170, 250, 250, 150, 150];
+  for (var i = 0; i < widths.length; i++) {
+    sheet.setColumnWidth(i + 1, widths[i]);
   }
 
-  // Лист журнала: время | roomId | playerId | nickname | x | y | результат
-  var ls = getSheet(SHEET_NAME_LOG);
-  if (ls.getLastRow() === 0) {
-    ls.appendRow(["время","roomId","playerId","nickname","x","y","результат"]);
+  // Заголовок
+  var hdr = sheet.getRange(1, 1, 1, 11);
+  hdr.setBackground(CLR.NAVY)
+     .setFontColor(CLR.HEADER_TEXT)
+     .setFontWeight("bold")
+     .setFontSize(10)
+     .setHorizontalAlignment("center")
+     .setVerticalAlignment("middle")
+     .setWrap(true);
+  sheet.setRowHeight(1, 40);
+  sheet.setFrozenRows(1);
+
+  // Чередующиеся строки данных (если есть)
+  _applyDataRowStyles(sheet, 11);
+
+  // Условное форматирование статуса
+  _applyStatusConditional(sheet, 6);
+
+  SpreadsheetApp.flush();
+}
+
+// ── НАСТРОЙКА ЛИСТА «ИГРОКИ» ────────────────────────────────
+function _setupPlayersSheet() {
+  var sheet = getSheet(SHEET_NAME_PLAYERS);
+  sheet.setTabColor(CLR.WAVE);
+
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow([
+      "👤 ID Игрока", "🎮 Никнейм", "🏠 ID Комнаты",
+      "🔢 Слот", "🚢 Расстановка кораблей (JSON)", "🕐 Последнее обращение"
+    ]);
+  }
+
+  var widths = [150, 120, 100, 60, 400, 170];
+  for (var i = 0; i < widths.length; i++) {
+    sheet.setColumnWidth(i + 1, widths[i]);
+  }
+
+  var hdr = sheet.getRange(1, 1, 1, 6);
+  hdr.setBackground(CLR.WAVE)
+     .setFontColor(CLR.HEADER_TEXT)
+     .setFontWeight("bold")
+     .setFontSize(10)
+     .setHorizontalAlignment("center")
+     .setVerticalAlignment("middle")
+     .setWrap(true);
+  sheet.setRowHeight(1, 40);
+  sheet.setFrozenRows(1);
+
+  _applyDataRowStyles(sheet, 6);
+  SpreadsheetApp.flush();
+}
+
+// ── НАСТРОЙКА ЛИСТА «ЖУРНАЛ ВЫСТРЕЛОВ» ─────────────────────
+function _setupLogSheet() {
+  // Переименовываем старый лист если нужно
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var oldLog = ss.getSheetByName("Журнал");
+  if (oldLog) oldLog.setName(SHEET_NAME_LOG);
+
+  var sheet = getSheet(SHEET_NAME_LOG);
+  sheet.setTabColor(CLR.GREEN);
+
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow([
+      "🕐 Время", "🏠 ID Комнаты", "👤 ID Игрока",
+      "🎮 Никнейм", "📍 X", "📍 Y", "💥 Результат"
+    ]);
+  }
+
+  var widths = [170, 110, 150, 120, 50, 50, 90];
+  for (var i = 0; i < widths.length; i++) {
+    sheet.setColumnWidth(i + 1, widths[i]);
+  }
+
+  var hdr = sheet.getRange(1, 1, 1, 7);
+  hdr.setBackground(CLR.GREEN)
+     .setFontColor(CLR.HEADER_TEXT)
+     .setFontWeight("bold")
+     .setFontSize(10)
+     .setHorizontalAlignment("center")
+     .setVerticalAlignment("middle")
+     .setWrap(true);
+  sheet.setRowHeight(1, 40);
+  sheet.setFrozenRows(1);
+
+  _applyDataRowStyles(sheet, 7);
+
+  // Условное форматирование: hit/miss/sunk
+  _applyShotResultConditional(sheet, 7);
+
+  SpreadsheetApp.flush();
+}
+
+// ── НАСТРОЙКА ЛИСТА «ДЕТАЛЬНЫЙ ЛОГ» ────────────────────────
+function _setupDetailLogSheet() {
+  var sheet = getSheet(SHEET_NAME_DETAIL_LOG);
+  sheet.setTabColor(CLR.OCEAN);
+
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow([
+      "🕐 Время", "⚡ Метод", "🎬 Action", "🏠 RoomId",
+      "👤 PlayerId", "🎮 Никнейм", "📥 Запрос (кратко)",
+      "📤 Ответ (кратко)", "✅ Статус", "⏱ Время (мс)"
+    ]);
+  }
+
+  var widths = [170, 60, 130, 110, 150, 120, 300, 300, 70, 80];
+  for (var i = 0; i < widths.length; i++) {
+    sheet.setColumnWidth(i + 1, widths[i]);
+  }
+
+  var hdr = sheet.getRange(1, 1, 1, 10);
+  hdr.setBackground(CLR.OCEAN)
+     .setFontColor(CLR.HEADER_TEXT)
+     .setFontWeight("bold")
+     .setFontSize(10)
+     .setHorizontalAlignment("center")
+     .setVerticalAlignment("middle")
+     .setWrap(true);
+  sheet.setRowHeight(1, 40);
+  sheet.setFrozenRows(1);
+
+  _applyDataRowStyles(sheet, 10);
+
+  // Условное форматирование статуса OK/ERROR
+  _applyOkErrorConditional(sheet, 9);
+
+  SpreadsheetApp.flush();
+}
+
+// ── НАСТРОЙКА ЛИСТА «ИСТОРИЯ ИГР» ───────────────────────────
+function _setupHistorySheet() {
+  var sheet = getSheet(SHEET_NAME_HISTORY);
+  sheet.setTabColor(CLR.GOLD);
+
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow([
+      "🕐 Время окончания", "🏠 ID Комнаты",
+      "🏆 Победитель (ник)", "💀 Проигравший (ник)",
+      "🎯 Выстрелов победителя", "🎯 Выстрелов проигравшего",
+      "⏱ Длительность (мин)", "📊 Причина завершения"
+    ]);
+  }
+
+  var widths = [170, 110, 140, 140, 110, 120, 110, 150];
+  for (var i = 0; i < widths.length; i++) {
+    sheet.setColumnWidth(i + 1, widths[i]);
+  }
+
+  var hdr = sheet.getRange(1, 1, 1, 8);
+  hdr.setBackground(CLR.GOLD)
+     .setFontColor(CLR.DARK_TEXT)
+     .setFontWeight("bold")
+     .setFontSize(10)
+     .setHorizontalAlignment("center")
+     .setVerticalAlignment("middle")
+     .setWrap(true);
+  sheet.setRowHeight(1, 40);
+  sheet.setFrozenRows(1);
+
+  _applyDataRowStyles(sheet, 8);
+  SpreadsheetApp.flush();
+}
+
+// ── НАСТРОЙКА ЛИСТА «СТАТИСТИКА» ────────────────────────────
+function _setupStatsSheet() {
+  var sheet = getSheet(SHEET_NAME_STATS);
+  sheet.setTabColor(CLR.GOLD);
+
+  // Очищаем и строим заново
+  sheet.clearContents();
+  sheet.clearFormats();
+
+  // Заголовок-баннер
+  sheet.getRange(1, 1, 1, 7).merge()
+       .setValue("🏆  ТУРНИРНАЯ ТАБЛИЦА  🏆")
+       .setBackground(CLR.NAVY)
+       .setFontColor(CLR.GOLD)
+       .setFontWeight("bold")
+       .setFontSize(14)
+       .setHorizontalAlignment("center")
+       .setVerticalAlignment("middle");
+  sheet.setRowHeight(1, 50);
+
+  // Подзаголовок
+  sheet.getRange(2, 1, 1, 7).merge()
+       .setValue("Автоматически обновляется после каждой завершённой игры")
+       .setBackground(CLR.OCEAN)
+       .setFontColor(CLR.HEADER_TEXT)
+       .setFontSize(9)
+       .setHorizontalAlignment("center")
+       .setFontStyle("italic");
+  sheet.setRowHeight(2, 22);
+
+  // Заголовки столбцов
+  sheet.getRange(3, 1, 1, 7).setValues([[
+    "🥇 Место", "🎮 Никнейм", "🎲 Игр", "🏆 Побед", "💀 Поражений",
+    "📈 Win%", "🎯 Ср. выстрелов на победу"
+  ]]).setBackground(CLR.NAVY)
+     .setFontColor(CLR.HEADER_TEXT)
+     .setFontWeight("bold")
+     .setFontSize(10)
+     .setHorizontalAlignment("center")
+     .setVerticalAlignment("middle");
+  sheet.setRowHeight(3, 36);
+
+  var widths2 = [70, 150, 70, 80, 100, 80, 140];
+  for (var i = 0; i < widths2.length; i++) {
+    sheet.setColumnWidth(i + 1, widths2[i]);
+  }
+
+  sheet.setFrozenRows(3);
+  SpreadsheetApp.flush();
+}
+
+// ── НАСТРОЙКА ЛИСТА «СОСТОЯНИЕ» (служебный) ─────────────────
+function _setupStateSheet() {
+  var sheet = getSheet(SHEET_NAME_STATE);
+  sheet.setTabColor(CLR.GRAY);
+
+  sheet.clearContents();
+  sheet.clearFormats();
+
+  sheet.getRange(1, 1, 1, 3).merge()
+       .setValue("Служебный лист — не редактировать вручную")
+       .setBackground(CLR.GRAY)
+       .setFontColor(CLR.WHITE)
+       .setFontWeight("bold")
+       .setHorizontalAlignment("center");
+  sheet.setRowHeight(1, 30);
+
+  sheet.getRange(3, 1).setValue("Параметр");
+  sheet.getRange(3, 2).setValue("Значение");
+  sheet.getRange(3, 1, 1, 2)
+       .setBackground(CLR.NAVY)
+       .setFontColor(CLR.WHITE)
+       .setFontWeight("bold");
+
+  sheet.getRange(4, 1).setValue("Версия форматирования");
+  sheet.getRange(4, 2).setValue(FORMAT_VERSION);
+  sheet.getRange(5, 1).setValue("Таймаут комнаты (мин)");
+  sheet.getRange(5, 2).setValue(ROOM_TIMEOUT_MS / 60000);
+  sheet.getRange(6, 1).setValue("Последняя инициализация");
+  sheet.getRange(6, 2).setValue(new Date().toLocaleString("ru-RU"));
+
+  sheet.setColumnWidth(1, 200);
+  sheet.setColumnWidth(2, 200);
+  SpreadsheetApp.flush();
+}
+
+// ── ПРИМЕНЕНИЕ СТИЛЕЙ К СТРОКАМ ДАННЫХ ──────────────────────
+function _applyDataRowStyles(sheet, numCols) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  var dataRows = lastRow - 1;
+
+  // Чётные строки — светло-голубые, нечётные — белые
+  for (var r = 2; r <= lastRow; r++) {
+    var rng = sheet.getRange(r, 1, 1, numCols);
+    var bg = (r % 2 === 0) ? CLR.SEAFOAM : CLR.WHITE;
+    rng.setBackground(bg)
+       .setFontColor(CLR.DARK_TEXT)
+       .setFontSize(9)
+       .setVerticalAlignment("middle");
+    sheet.setRowHeight(r, 24);
+  }
+}
+
+// ── УСЛОВНЫЙ ФОРМАТ: Статус комнаты (playing/waiting/finished) ─
+function _applyStatusConditional(sheet, col) {
+  try {
+    var rules = sheet.getConditionalFormatRules();
+    var colLetter = _colLetter(col);
+    var range = sheet.getRange(colLetter + "2:" + colLetter + "1000");
+
+    var rPlaying = SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo("playing")
+      .setBackground(CLR.GREEN)
+      .setFontColor(CLR.WHITE)
+      .setRanges([range])
+      .build();
+
+    var rWaiting = SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo("waiting")
+      .setBackground(CLR.GOLD)
+      .setFontColor(CLR.DARK_TEXT)
+      .setRanges([range])
+      .build();
+
+    var rFinished = SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo("finished")
+      .setBackground(CLR.GRAY)
+      .setFontColor(CLR.WHITE)
+      .setRanges([range])
+      .build();
+
+    rules.push(rPlaying, rWaiting, rFinished);
+    sheet.setConditionalFormatRules(rules);
+  } catch(e) { /* игнорируем если условный формат не поддерживается */ }
+}
+
+// ── УСЛОВНЫЙ ФОРМАТ: Результат выстрела ─────────────────────
+function _applyShotResultConditional(sheet, col) {
+  try {
+    var rules = sheet.getConditionalFormatRules();
+    var colLetter = _colLetter(col);
+    var range = sheet.getRange(colLetter + "2:" + colLetter + "1000");
+
+    var rHit = SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo("hit")
+      .setBackground("#ff6b35")
+      .setFontColor(CLR.WHITE)
+      .setRanges([range])
+      .build();
+
+    var rMiss = SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo("miss")
+      .setBackground(CLR.SEAFOAM)
+      .setFontColor(CLR.DARK_TEXT)
+      .setRanges([range])
+      .build();
+
+    var rSunk = SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo("sunk")
+      .setBackground(CLR.RED)
+      .setFontColor(CLR.WHITE)
+      .setBold(true)
+      .setRanges([range])
+      .build();
+
+    rules.push(rHit, rMiss, rSunk);
+    sheet.setConditionalFormatRules(rules);
+  } catch(e) {}
+}
+
+// ── УСЛОВНЫЙ ФОРМАТ: OK / ERROR ─────────────────────────────
+function _applyOkErrorConditional(sheet, col) {
+  try {
+    var rules = sheet.getConditionalFormatRules();
+    var colLetter = _colLetter(col);
+    var range = sheet.getRange(colLetter + "2:" + colLetter + "1000");
+
+    var rOk = SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo("OK")
+      .setBackground(CLR.GREEN)
+      .setFontColor(CLR.WHITE)
+      .setRanges([range])
+      .build();
+
+    var rErr = SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo("ERROR")
+      .setBackground(CLR.RED)
+      .setFontColor(CLR.WHITE)
+      .setRanges([range])
+      .build();
+
+    rules.push(rOk, rErr);
+    sheet.setConditionalFormatRules(rules);
+  } catch(e) {}
+}
+
+// ── ВСПОМОГАТЕЛЬНАЯ: буква столбца по номеру ────────────────
+function _colLetter(n) {
+  var s = "";
+  while (n > 0) {
+    var rem = (n - 1) % 26;
+    s = String.fromCharCode(65 + rem) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+// ── СТИЛИЗОВАТЬ НОВУЮ СТРОКУ ДАННЫХ ─────────────────────────
+function _styleNewRow(sheet, rowNum, numCols) {
+  try {
+    var bg = (rowNum % 2 === 0) ? CLR.SEAFOAM : CLR.WHITE;
+    sheet.getRange(rowNum, 1, 1, numCols)
+         .setBackground(bg)
+         .setFontColor(CLR.DARK_TEXT)
+         .setFontSize(9)
+         .setVerticalAlignment("middle");
+    sheet.setRowHeight(rowNum, 24);
+  } catch(e) {}
+}
+
+// ── ЗАПИСЬ В ДЕТАЛЬНЫЙ ЛОГ ──────────────────────────────────
+function _writeDetailLog(method, action, inputData, response, startTime) {
+  try {
+    var sheet = getSheet(SHEET_NAME_DETAIL_LOG);
+    var endTime = new Date();
+    var elapsed = endTime - startTime;
+    var status = (response && response.ok === true) ? "OK" : "ERROR";
+
+    // Безопасное извлечение никнейма и roomId из входных данных
+    var nick   = (inputData && inputData.nickname) ? inputData.nickname
+                 : (inputData && inputData.playerId) ? String(inputData.playerId).substring(0, 10) + "…"
+                 : "—";
+    var roomId = (inputData && inputData.roomId) ? inputData.roomId : "—";
+    var pid    = (inputData && inputData.playerId) ? inputData.playerId : "—";
+
+    // Краткое описание запроса (без shipBoard — слишком длинный)
+    var reqCopy = {};
+    if (inputData) {
+      for (var k in inputData) {
+        if (inputData.hasOwnProperty(k) && k !== "shipBoard" && k !== "password") {
+          reqCopy[k] = inputData[k];
+        }
+      }
+    }
+    var reqStr = JSON.stringify(reqCopy);
+    if (reqStr.length > 250) reqStr = reqStr.substring(0, 247) + "…";
+
+    // Краткое описание ответа
+    var respCopy = {};
+    if (response) {
+      for (var rk in response) {
+        if (response.hasOwnProperty(rk) && rk !== "myBoard") {
+          respCopy[rk] = response[rk];
+        }
+      }
+    }
+    var respStr = JSON.stringify(respCopy);
+    if (respStr.length > 250) respStr = respStr.substring(0, 247) + "…";
+
+    var rowNum = (sheet.getLastRow() || 1) + 1;
+    sheet.appendRow([
+      endTime.toLocaleString("ru-RU"),
+      method,
+      action,
+      roomId,
+      pid === "—" ? "—" : pid,
+      nick,
+      reqStr,
+      respStr,
+      status,
+      elapsed
+    ]);
+    _styleNewRow(sheet, rowNum, 10);
+  } catch(e) {
+    // Не прерываем основную логику если лог упал
   }
 }
 
@@ -274,6 +790,8 @@ function writeRoomField(row, colIndex, value) {
 
 function deleteRoomRow(row) {
   var sheet = getSheet(SHEET_NAME_ROOMS);
+  // Очищаем перед удалением чтобы не оставалось артефактов
+  sheet.getRange(row, 1, 1, sheet.getLastColumn()).clearContent();
   sheet.deleteRow(row);
 }
 
@@ -293,9 +811,10 @@ function cleanupOldRooms() {
     if (!lastActivity) continue;
     var lastMs = new Date(lastActivity).getTime();
     if (now - lastMs > ROOM_TIMEOUT_MS) {
-      // Удаляем игроков этой комнаты
       var roomId = data[i][0];
       deletePlayersOfRoom(roomId);
+      // Очищаем перед удалением
+      sheet.getRange(i + 1, 1, 1, sheet.getLastColumn()).clearContent();
       sheet.deleteRow(i + 1);
     }
   }
@@ -337,13 +856,22 @@ function findPlayerById(playerId) {
 function deletePlayersOfRoom(roomId) {
   var sheet = getSheet(SHEET_NAME_PLAYERS);
   var data  = sheet.getDataRange().getValues();
+  var totalCols = sheet.getLastColumn();
+  // Удаляем снизу вверх; очищаем перед удалением — исправление бага с lastSeen
   for (var i = data.length - 1; i >= 1; i--) {
-    if (data[i][2] === roomId) sheet.deleteRow(i + 1);
+    if (data[i][2] === roomId) {
+      sheet.getRange(i + 1, 1, 1, totalCols).clearContent();
+      sheet.deleteRow(i + 1);
+    }
   }
 }
 
 function removePlayerRow(row) {
-  getSheet(SHEET_NAME_PLAYERS).deleteRow(row);
+  var sheet = getSheet(SHEET_NAME_PLAYERS);
+  // Очищаем содержимое строки перед удалением — исправление бага с зависшей ячейкой lastSeen
+  var totalCols = sheet.getLastColumn();
+  sheet.getRange(row, 1, 1, totalCols).clearContent();
+  sheet.deleteRow(row);
 }
 
 function updatePlayerLastSeen(row) {
@@ -359,14 +887,13 @@ function getRooms() {
   var result = [];
   for (var i = 0; i < rooms.length; i++) {
     var r = rooms[i];
-    // Показываем только комнаты в ожидании второго игрока
     if (r.phase !== "waiting") continue;
     var lastMs = r.lastActivity ? new Date(r.lastActivity).getTime() : 0;
     var idleSec = Math.floor((now - lastMs) / 1000);
     result.push({
-      roomId:      r.roomId,
-      player1Nick: r.player1Nick,
-      idleSec:     idleSec,
+      roomId:       r.roomId,
+      player1Nick:  r.player1Nick,
+      idleSec:      idleSec,
       lastActivity: r.lastActivity
     });
   }
@@ -388,11 +915,15 @@ function createRoom(data) {
 
   // Создаём комнату
   var roomSheet = getSheet(SHEET_NAME_ROOMS);
-  roomSheet.appendRow([roomId, playerId, nickname, "", "", "waiting", now, "[]", "[]", ""]);
+  var newRoomRow = (roomSheet.getLastRow() || 1) + 1;
+  roomSheet.appendRow([roomId, playerId, nickname, "", "", "waiting", now, "[]", "[]", "", ""]);
+  _styleNewRow(roomSheet, newRoomRow, 11);
 
   // Добавляем игрока
   var playerSheet = getSheet(SHEET_NAME_PLAYERS);
+  var newPlayerRow = (playerSheet.getLastRow() || 1) + 1;
   playerSheet.appendRow([playerId, nickname, roomId, 1, JSON.stringify(ships), now]);
+  _styleNewRow(playerSheet, newPlayerRow, 6);
 
   return { ok: true, playerId: playerId, roomId: roomId, slot: 1 };
 }
@@ -428,9 +959,11 @@ function joinRoom(data) {
 
   // Добавляем второго игрока
   var playerSheet = getSheet(SHEET_NAME_PLAYERS);
+  var newPlayerRow = (playerSheet.getLastRow() || 1) + 1;
   playerSheet.appendRow([playerId, nickname, roomId, 2, JSON.stringify(ships), now]);
+  _styleNewRow(playerSheet, newPlayerRow, 6);
 
-  // Обновляем комнату: записываем player2, меняем фазу на playing
+  // Обновляем комнату
   var roomSheet = getSheet(SHEET_NAME_ROOMS);
   var roomData  = roomSheet.getDataRange().getValues();
   for (var i = 1; i < roomData.length; i++) {
@@ -440,11 +973,7 @@ function joinRoom(data) {
       roomSheet.getRange(targetRow, 5).setValue(nickname);
       roomSheet.getRange(targetRow, 6).setValue("playing");
       roomSheet.getRange(targetRow, 7).setValue(now);
-      
-      // === ИСПРАВЛЕНИЕ ===
-      // Первый игрок (slot 1) всегда начинает
       setTurn(targetRow, room.player1Id);
-      
       break;
     }
   }
@@ -462,12 +991,10 @@ function getState(playerId, roomId) {
   var room = findRoom(roomId);
   if (!room) return { ok: false, error: "Комната не найдена" };
 
-  // Обновляем lastSeen игрока
   if (playerId) {
     var me = findPlayerById(playerId);
     if (me) {
       updatePlayerLastSeen(me.row);
-      // Обновляем активность комнаты
       updateRoomActivity(room.row);
     }
   }
@@ -477,7 +1004,6 @@ function getState(playerId, roomId) {
     return { playerId: p.playerId, nickname: p.nickname, slot: p.slot };
   });
 
-  // Определяем чей ход: всегда слот 1 начинает, ход передаётся через shotsP1/shotsP2
   var turn = determineTurn(room);
 
   var result = {
@@ -491,7 +1017,6 @@ function getState(playerId, roomId) {
     shotsP2: room.shotsP2
   };
 
-  // Добавляем собственное поле кораблей
   if (playerId) {
     var myPlayer = players.filter(function(p){ return p.playerId === playerId; })[0];
     if (myPlayer) {
@@ -504,16 +1029,12 @@ function getState(playerId, roomId) {
 }
 
 // ── ОПРЕДЕЛЕНИЕ ЧЬЕГО ХОДА ──────────────────────────────────
-// Слот 1 ходит первым. При промахе ход переходит. При попадании — снова тот же.
-// Читаем из поля turn комнаты (хранится playerId)
 function determineTurn(room) {
-  // turn хранится в колонке 10 (индекс 9 в данных) — нам нужен отдельный механизм
-  // Используем отдельную колонку — читаем прямо из таблицы
   var sheet = getSheet(SHEET_NAME_ROOMS);
   var data  = sheet.getDataRange().getValues();
   for (var i = 1; i < data.length; i++) {
     if (data[i][0] === room.roomId) {
-      return data[i][10] || ""; // колонка 11 — turn (playerId)
+      return data[i][10] || "";
     }
   }
   return "";
@@ -521,7 +1042,6 @@ function determineTurn(room) {
 
 function setTurn(roomRow, playerId) {
   var sheet = getSheet(SHEET_NAME_ROOMS);
-  // Убеждаемся что колонка 11 существует
   sheet.getRange(roomRow, 11).setValue(playerId);
 }
 
@@ -570,14 +1090,12 @@ function makeMove(data) {
   var hit = cellValue === 1;
   var result = hit ? "hit" : "miss";
 
-  // Информация о потопленном корабле
   var sunkCells = [];
   var sunkPerimeter = [];
   var sunk = false;
 
   if (hit) {
     opponentBoard[y][x] = 2;
-    // Обновляем поле противника
     var opSheet = getSheet(SHEET_NAME_PLAYERS);
     var opData  = opSheet.getDataRange().getValues();
     for (var r = 1; r < opData.length; r++) {
@@ -596,7 +1114,6 @@ function makeMove(data) {
     }
   }
 
-  // Добавляем выстрел в массив
   var shotObj = { x: x, y: y, result: result };
   if (sunk) {
     shotObj.sunkCells     = sunkCells;
@@ -609,16 +1126,25 @@ function makeMove(data) {
   var roomData  = roomSheet.getDataRange().getValues();
   for (var ri = 1; ri < roomData.length; ri++) {
     if (roomData[ri][0] === roomId) {
-      var shotsColIdx = shooter.slot === 1 ? 8 : 9; // колонки 8 и 9 (1-based)
+      var shotsColIdx = shooter.slot === 1 ? 8 : 9;
       roomSheet.getRange(ri + 1, shotsColIdx).setValue(JSON.stringify(shots));
-      roomSheet.getRange(ri + 1, 7).setValue(new Date().toISOString()); // lastActivity
+      roomSheet.getRange(ri + 1, 7).setValue(new Date().toISOString());
       break;
     }
   }
 
-  // Записываем в журнал
+  // Записываем в журнал выстрелов
   var logSheet = getSheet(SHEET_NAME_LOG);
-  logSheet.appendRow([new Date().toISOString(), roomId, playerId, shooter.nickname, x, y, result]);
+  var newLogRow = (logSheet.getLastRow() || 1) + 1;
+  logSheet.appendRow([
+    new Date().toLocaleString("ru-RU"),
+    roomId,
+    playerId,
+    shooter.nickname,
+    x, y,
+    result
+  ]);
+  _styleNewRow(logSheet, newLogRow, 7);
 
   // Проверяем победу
   var won = isGameOver(opponentBoard);
@@ -632,6 +1158,9 @@ function makeMove(data) {
         break;
       }
     }
+    // Записываем в историю игр
+    _logGameHistory(room, shooter, opponent, shots);
+
     return { ok: true, result: result, sunk: sunk, sunkCells: sunkCells, sunkPerimeter: sunkPerimeter, gameOver: true, winner: playerId };
   }
 
@@ -657,9 +1186,143 @@ function makeMove(data) {
   };
 }
 
-// ── ПРОВЕРКА: УНИЧТОЖЕН ЛИ КОРАБЛЬ — возвращает клетки и периметр ──
+// ── ЗАПИСЬ В ИСТОРИЮ ИГР ────────────────────────────────────
+function _logGameHistory(room, winner, loser, winnerShots) {
+  try {
+    var sheet = getSheet(SHEET_NAME_HISTORY);
+    var now   = new Date();
+
+    // Длительность: от lastActivity комнаты (примерно)
+    var startMs = room.lastActivity ? new Date(room.lastActivity).getTime() : now.getTime();
+    var durationMin = Math.round((now.getTime() - startMs) / 60000);
+
+    // Кол-во выстрелов
+    var loserShotsKey = loser.slot === 1 ? "shotsP1" : "shotsP2";
+    var loserShots = room[loserShotsKey] ? room[loserShotsKey].length : 0;
+
+    var newRow = (sheet.getLastRow() || 1) + 1;
+    sheet.appendRow([
+      now.toLocaleString("ru-RU"),
+      room.roomId,
+      winner.nickname,
+      loser.nickname,
+      winnerShots.length,
+      loserShots,
+      durationMin,
+      "Потоплены все корабли"
+    ]);
+
+    // Стиль новой строки — золотая для победителя
+    var rng = sheet.getRange(newRow, 1, 1, 8);
+    var bg = (newRow % 2 === 0) ? CLR.SEAFOAM : CLR.WHITE;
+    rng.setBackground(bg)
+       .setFontColor(CLR.DARK_TEXT)
+       .setFontSize(9)
+       .setVerticalAlignment("middle");
+    // Выделяем ник победителя золотым
+    sheet.getRange(newRow, 3)
+         .setBackground(CLR.GOLD)
+         .setFontWeight("bold")
+         .setFontColor(CLR.DARK_TEXT);
+    sheet.setRowHeight(newRow, 24);
+
+    // Обновляем статистику
+    _updateStats(winner.nickname, loser.nickname, winnerShots.length);
+  } catch(e) {}
+}
+
+// ── ОБНОВЛЕНИЕ СТАТИСТИКИ ────────────────────────────────────
+function _updateStats(winnerNick, loserNick, winnerShotCount) {
+  try {
+    var sheet = getSheet(SHEET_NAME_STATS);
+    // Данные начинаются с 4-й строки (1=баннер, 2=подзаголовок, 3=шапка)
+    var DATA_START = 4;
+    var lastRow = sheet.getLastRow();
+
+    // Читаем текущие данные
+    var statsMap = {};
+    if (lastRow >= DATA_START) {
+      var existing = sheet.getRange(DATA_START, 1, lastRow - DATA_START + 1, 7).getValues();
+      for (var i = 0; i < existing.length; i++) {
+        var nick = existing[i][1];
+        if (!nick) continue;
+        statsMap[nick] = {
+          games:   existing[i][2] || 0,
+          wins:    existing[i][3] || 0,
+          losses:  existing[i][4] || 0,
+          totalWinShots: (existing[i][6] || 0) * (existing[i][3] || 1) // восстанавливаем сумму
+        };
+      }
+    }
+
+    // Обновляем победителя
+    if (!statsMap[winnerNick]) statsMap[winnerNick] = { games: 0, wins: 0, losses: 0, totalWinShots: 0 };
+    statsMap[winnerNick].games++;
+    statsMap[winnerNick].wins++;
+    statsMap[winnerNick].totalWinShots += winnerShotCount;
+
+    // Обновляем проигравшего
+    if (!statsMap[loserNick]) statsMap[loserNick] = { games: 0, wins: 0, losses: 0, totalWinShots: 0 };
+    statsMap[loserNick].games++;
+    statsMap[loserNick].losses++;
+
+    // Сортируем по победам desc, потом по win% desc
+    var sorted = [];
+    for (var n in statsMap) {
+      if (statsMap.hasOwnProperty(n)) {
+        var s = statsMap[n];
+        sorted.push({
+          nick: n,
+          games: s.games,
+          wins: s.wins,
+          losses: s.losses,
+          winPct: s.games > 0 ? Math.round((s.wins / s.games) * 100) : 0,
+          avgShots: s.wins > 0 ? Math.round(s.totalWinShots / s.wins) : 0
+        });
+      }
+    }
+    sorted.sort(function(a, b) {
+      if (b.wins !== a.wins) return b.wins - a.wins;
+      return b.winPct - a.winPct;
+    });
+
+    // Очищаем и записываем данные
+    if (lastRow >= DATA_START) {
+      sheet.getRange(DATA_START, 1, lastRow - DATA_START + 1, 7).clearContent();
+      sheet.getRange(DATA_START, 1, lastRow - DATA_START + 1, 7).clearFormat();
+    }
+
+    for (var j = 0; j < sorted.length; j++) {
+      var rowNum = DATA_START + j;
+      var entry = sorted[j];
+      var medal = j === 0 ? "🥇" : j === 1 ? "🥈" : j === 2 ? "🥉" : String(j + 1);
+      sheet.getRange(rowNum, 1, 1, 7).setValues([[
+        medal,
+        entry.nick,
+        entry.games,
+        entry.wins,
+        entry.losses,
+        entry.winPct + "%",
+        entry.avgShots
+      ]]);
+
+      // Стили строки
+      var rowBg = j === 0 ? CLR.GOLD : (j % 2 === 0 ? CLR.SEAFOAM : CLR.WHITE);
+      var rowBold = j === 0;
+      sheet.getRange(rowNum, 1, 1, 7)
+           .setBackground(rowBg)
+           .setFontColor(CLR.DARK_TEXT)
+           .setFontSize(9)
+           .setFontWeight(rowBold ? "bold" : "normal")
+           .setHorizontalAlignment("center")
+           .setVerticalAlignment("middle");
+      sheet.setRowHeight(rowNum, 26);
+    }
+  } catch(e) {}
+}
+
+// ── ПРОВЕРКА: УНИЧТОЖЕН ЛИ КОРАБЛЬ ──────────────────────────
 function checkShipSunk(board, hitX, hitY) {
-  // Flood-fill для нахождения всех клеток корабля
   var visited = [];
   for (var r = 0; r < 10; r++) visited.push([false,false,false,false,false,false,false,false,false,false]);
 
@@ -682,12 +1345,10 @@ function checkShipSunk(board, hitX, hitY) {
     }
   }
 
-  // Проверяем: все клетки корабля подбиты?
   for (var i = 0; i < cells.length; i++) {
     if (board[cells[i].y][cells[i].x] === 1) return { sunk: false, cells: [], perimeter: [] };
   }
 
-  // Корабль потоплен — вычисляем периметр
   var cellSet = {};
   cells.forEach(function(c){ cellSet[c.y + "_" + c.x] = true; });
 
@@ -719,7 +1380,7 @@ function isGameOver(board) {
   return true;
 }
 
-// ── ЯВНЫЙ ВЫХОД ИГРОКА ────────────────────────────────────
+// ── ЯВНЫЙ ВЫХОД ИГРОКА ──────────────────────────────────────
 function leaveGame(data) {
   var playerId = data.playerId;
   var roomId   = data.roomId;
@@ -731,13 +1392,11 @@ function leaveGame(data) {
   if (roomId) {
     var room = findRoom(roomId);
     if (room && room.phase === "playing") {
-      // Переводим комнату обратно в waiting
       var sheet = getSheet(SHEET_NAME_ROOMS);
       var data2 = sheet.getDataRange().getValues();
       for (var i = 1; i < data2.length; i++) {
         if (data2[i][0] === roomId) {
           sheet.getRange(i + 1, 6).setValue("waiting");
-          // Очищаем второго игрока если это он выходит
           if (room.player2Id === playerId) {
             sheet.getRange(i + 1, 4).setValue("");
             sheet.getRange(i + 1, 5).setValue("");
@@ -751,12 +1410,16 @@ function leaveGame(data) {
         }
       }
     } else if (room && room.phase === "waiting") {
-      // Первый игрок вышел из ожидания — удаляем комнату
       deletePlayersOfRoom(roomId);
       var sheet2 = getSheet(SHEET_NAME_ROOMS);
       var data3  = sheet2.getDataRange().getValues();
       for (var j = data3.length - 1; j >= 1; j--) {
-        if (data3[j][0] === roomId) { sheet2.deleteRow(j + 1); break; }
+        if (data3[j][0] === roomId) {
+          // Очищаем перед удалением
+          sheet2.getRange(j + 1, 1, 1, sheet2.getLastColumn()).clearContent();
+          sheet2.deleteRow(j + 1);
+          break;
+        }
       }
     }
   }
@@ -796,17 +1459,20 @@ function restartGame(data) {
   if (password !== ADMIN_PASSWORD) return { ok: false, error: "Неверный пароль" };
 
   if (roomId) {
-    // Перезапустить конкретную комнату: удалить её и всех игроков
     deletePlayersOfRoom(roomId);
     var sheet = getSheet(SHEET_NAME_ROOMS);
     var data2 = sheet.getDataRange().getValues();
     for (var i = data2.length - 1; i >= 1; i--) {
-      if (data2[i][0] === roomId) { sheet.deleteRow(i + 1); break; }
+      if (data2[i][0] === roomId) {
+        sheet.getRange(i + 1, 1, 1, sheet.getLastColumn()).clearContent();
+        sheet.deleteRow(i + 1);
+        break;
+      }
     }
     return { ok: true, message: "Комната удалена" };
   }
 
-  // Без roomId — очистить всё
+  // Без roomId — очистить активные данные (история сохраняется)
   var rs = getSheet(SHEET_NAME_ROOMS);
   var rLast = rs.getLastRow();
   if (rLast > 1) rs.deleteRows(2, rLast - 1);
@@ -815,5 +1481,5 @@ function restartGame(data) {
   var pLast = ps.getLastRow();
   if (pLast > 1) ps.deleteRows(2, pLast - 1);
 
-  return { ok: true, message: "Все комнаты удалены" };
+  return { ok: true, message: "Все активные комнаты удалены" };
 }
