@@ -11,7 +11,7 @@ var _monitorStartTime = Date.now();
 var _pcmDetailsOpen = false;
 var _pcmAutoCleanupRunning = false;
 var PCM_LIMITS_STORAGE_KEY = "mb_monitor_pcm_limits_v1";
-var PCM_LIMITS_DEFAULT = { maxDecoded: 10, maxPcmMb: 20 };
+var PCM_LIMITS_DEFAULT = { maxDecoded: 10, maxPcmMb: 15, keepRecent: 2 };
 
 // ── УТИЛИТЫ ──────────────────────────────────────────────────
 
@@ -57,7 +57,8 @@ function _sanitizePcmLimitNum(val, fallback) {
 function loadPcmMonitorLimits() {
   var out = {
     maxDecoded: PCM_LIMITS_DEFAULT.maxDecoded,
-    maxPcmMb: PCM_LIMITS_DEFAULT.maxPcmMb
+    maxPcmMb: PCM_LIMITS_DEFAULT.maxPcmMb,
+    keepRecent: PCM_LIMITS_DEFAULT.keepRecent
   };
   try {
     var raw = localStorage.getItem(PCM_LIMITS_STORAGE_KEY);
@@ -65,15 +66,19 @@ function loadPcmMonitorLimits() {
     var parsed = JSON.parse(raw);
     out.maxDecoded = _sanitizePcmLimitNum(parsed && parsed.maxDecoded, PCM_LIMITS_DEFAULT.maxDecoded);
     out.maxPcmMb = _sanitizePcmLimitNum(parsed && parsed.maxPcmMb, PCM_LIMITS_DEFAULT.maxPcmMb);
+    out.keepRecent = _sanitizePcmLimitNum(parsed && parsed.keepRecent, PCM_LIMITS_DEFAULT.keepRecent);
   } catch (e) {}
+  if (out.keepRecent > out.maxDecoded) out.keepRecent = out.maxDecoded;
   return out;
 }
 
-function savePcmMonitorLimits(maxDecoded, maxPcmMb) {
+function savePcmMonitorLimits(maxDecoded, maxPcmMb, keepRecent) {
   var payload = {
     maxDecoded: _sanitizePcmLimitNum(maxDecoded, PCM_LIMITS_DEFAULT.maxDecoded),
-    maxPcmMb: _sanitizePcmLimitNum(maxPcmMb, PCM_LIMITS_DEFAULT.maxPcmMb)
+    maxPcmMb: _sanitizePcmLimitNum(maxPcmMb, PCM_LIMITS_DEFAULT.maxPcmMb),
+    keepRecent: _sanitizePcmLimitNum(keepRecent, PCM_LIMITS_DEFAULT.keepRecent)
   };
+  if (payload.keepRecent > payload.maxDecoded) payload.keepRecent = payload.maxDecoded;
   try { localStorage.setItem(PCM_LIMITS_STORAGE_KEY, JSON.stringify(payload)); } catch (e) {}
   return payload;
 }
@@ -368,7 +373,8 @@ async function renderMonitor() {
     try {
       clearAudioV2PcmBuffers({
         maxDecoded: pcmLimits.maxDecoded,
-        maxPcmBytes: pcmLimits.maxPcmMb * 1024 * 1024
+        maxPcmBytes: pcmLimits.maxPcmMb * 1024 * 1024,
+        keepRecentCount: pcmLimits.keepRecent
       });
       d = await collectMonitorData();
     } catch (e2) {
@@ -451,6 +457,12 @@ async function renderMonitor() {
             + '<input type="text" class="mon-limit-input" id="monitorPcmLimitMbInput" value="' + pcmLimits.maxPcmMb + '" readonly aria-readonly="true">'
             + '<button type="button" class="mon-limit-btn" data-role="pcm-limit-mb" data-delta="1" title="Увеличить лимит памяти PCM">+</button>'
             + '</span> <span class="mon-dim">МБ</span>' },
+        { k: "Нижний порог (оставить)",
+          vRaw: '<span class="mon-limit-control">'
+            + '<button type="button" class="mon-limit-btn" data-role="pcm-limit-keep" data-delta="-1" title="Уменьшить нижний порог">−</button>'
+            + '<input type="text" class="mon-limit-input" id="monitorPcmKeepRecentInput" value="' + pcmLimits.keepRecent + '" readonly aria-readonly="true">'
+            + '<button type="button" class="mon-limit-btn" data-role="pcm-limit-keep" data-delta="1" title="Увеличить нижний порог">+</button>'
+            + '</span> <span class="mon-dim">последних звуков</span>' },
         { k: "Загружаются сейчас", v: ai.inflightCount, valCls: ai.inflightCount > 0 ? "mon-gold" : "" },
         { k: "Активных источников (играют)", v: ai.activeSources,
           valCls: ai.activeSources > 0 ? "mon-gold" : "" },
@@ -775,12 +787,15 @@ function _showCopyFeedback(btn, symbol) {
       var cur = loadPcmMonitorLimits();
       if (role === "pcm-limit-dec") cur.maxDecoded = Math.max(0, cur.maxDecoded + delta);
       if (role === "pcm-limit-mb") cur.maxPcmMb = Math.max(0, cur.maxPcmMb + delta);
+      if (role === "pcm-limit-keep") cur.keepRecent = Math.max(0, cur.keepRecent + delta);
 
-      var saved2 = savePcmMonitorLimits(cur.maxDecoded, cur.maxPcmMb);
+      var saved2 = savePcmMonitorLimits(cur.maxDecoded, cur.maxPcmMb, cur.keepRecent);
       var decInput2 = document.getElementById("monitorPcmLimitDecodedInput");
       var mbInput2 = document.getElementById("monitorPcmLimitMbInput");
+      var keepInput2 = document.getElementById("monitorPcmKeepRecentInput");
       if (decInput2) decInput2.value = String(saved2.maxDecoded);
       if (mbInput2) mbInput2.value = String(saved2.maxPcmMb);
+      if (keepInput2) keepInput2.value = String(saved2.keepRecent);
       return;
     }
 
@@ -788,15 +803,18 @@ function _showCopyFeedback(btn, symbol) {
     e.preventDefault();
     var decodedInput = document.getElementById("monitorPcmLimitDecodedInput");
     var mbInput = document.getElementById("monitorPcmLimitMbInput");
+    var keepInput = document.getElementById("monitorPcmKeepRecentInput");
     var saved = savePcmMonitorLimits(
       decodedInput ? decodedInput.value : PCM_LIMITS_DEFAULT.maxDecoded,
-      mbInput ? mbInput.value : PCM_LIMITS_DEFAULT.maxPcmMb
+      mbInput ? mbInput.value : PCM_LIMITS_DEFAULT.maxPcmMb,
+      keepInput ? keepInput.value : PCM_LIMITS_DEFAULT.keepRecent
     );
 
     if (typeof clearAudioV2PcmBuffers === "function") {
       clearAudioV2PcmBuffers({
         maxDecoded: saved.maxDecoded,
-        maxPcmBytes: saved.maxPcmMb * 1024 * 1024
+        maxPcmBytes: saved.maxPcmMb * 1024 * 1024,
+        keepRecentCount: saved.keepRecent
       });
     }
     renderMonitor();

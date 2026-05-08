@@ -1,5 +1,6 @@
 // Управление декодированными AudioBuffer из audioEngine (PCM float32) — см. audio_v2.js.
-// Если переданы лимиты, оставляет часть буферов (самые "лёгкие"), укладываясь в ограничения.
+// Если переданы лимиты, оставляет часть буферов (последние добавленные), укладываясь в ограничения.
+// Можно задать нижний порог keepRecentCount: оставить после очистки только последние N буферов (или меньше, если упрёмся в лимит памяти).
 // Без лимитов очищает всё.
 
 function _getAudioV2BufferBytes(buf) {
@@ -35,8 +36,10 @@ function clearAudioV2PcmBuffers(opts) {
   var hasLimits = !!(opts && (opts.maxDecoded != null || opts.maxPcmBytes != null));
   var maxDecoded = hasLimits ? Number(opts.maxDecoded) : NaN;
   var maxPcmBytes = hasLimits ? Number(opts.maxPcmBytes) : NaN;
+  var keepRecentCount = opts ? Number(opts.keepRecentCount) : NaN;
   if (!isFinite(maxDecoded) || maxDecoded < 0) maxDecoded = Infinity;
   if (!isFinite(maxPcmBytes) || maxPcmBytes < 0) maxPcmBytes = Infinity;
+  if (!isFinite(keepRecentCount) || keepRecentCount < 0) keepRecentCount = NaN;
 
   if (!hasLimits || (maxDecoded === Infinity && maxPcmBytes === Infinity)) {
     try {
@@ -53,14 +56,20 @@ function clearAudioV2PcmBuffers(opts) {
     out.afterDecoded = 0;
     out.afterBytes = 0;
   } else {
-    // Сохраняем меньшие буферы первыми, чтобы вместить максимум полезных звуков в лимит.
-    entries.sort(function (a, b) { return a.bytes - b.bytes; });
+    // Сохраняем самые свежие буферы (т.е. последние добавленные в `audioEngine.buffers`),
+    // чтобы "подрезка" не выбрасывала то, что недавно декодировалось.
+    //
+    // Порядок свойств объекта для строковых ключей в современных JS — соответствует порядку вставки,
+    // поэтому берём entries с конца.
     var keep = {};
     var keptCount = 0;
     var keptBytes = 0;
-    for (var i = 0; i < entries.length; i++) {
+    var targetCount = maxDecoded;
+    if (isFinite(keepRecentCount)) targetCount = Math.min(targetCount, keepRecentCount);
+
+    for (var i = entries.length - 1; i >= 0; i--) {
       var it = entries[i];
-      if (keptCount + 1 > maxDecoded) continue;
+      if (keptCount + 1 > targetCount) continue;
       if (keptBytes + it.bytes > maxPcmBytes) continue;
       keep[it.src] = true;
       keptCount++;
