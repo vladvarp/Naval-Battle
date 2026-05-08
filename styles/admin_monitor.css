@@ -260,7 +260,8 @@
 }
 .mon-val-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
-.monitor-card input.mon-limit-input {
+.monitor-card input.mon-limit-input,
+.admin-audio-inline input.mon-limit-input {
   width: 62px;
   padding: 2px 6px;
   border-radius: 4px;
@@ -271,17 +272,20 @@
   font-family: "Share Tech Mono", ui-monospace, monospace;
   text-align: center;
 }
-.monitor-card input.mon-limit-input:focus {
+.monitor-card input.mon-limit-input:focus,
+.admin-audio-inline input.mon-limit-input:focus {
   outline: none;
   border-color: rgba(240,192,64,0.55);
   box-shadow: 0 0 0 1px rgba(240,192,64,0.18);
 }
-.monitor-card .mon-limit-control {
+.monitor-card .mon-limit-control,
+.admin-audio-inline .mon-limit-control {
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
-.monitor-card button.mon-limit-btn {
+.monitor-card button.mon-limit-btn,
+.admin-audio-inline button.mon-limit-btn {
   min-width: 22px;
   height: 22px;
   padding: 0;
@@ -294,15 +298,18 @@
   font-size: 13px;
   font-weight: 700;
 }
-.monitor-card button.mon-limit-btn:hover {
+.monitor-card button.mon-limit-btn:hover,
+.admin-audio-inline button.mon-limit-btn:hover {
   border-color: rgba(26,159,212,0.5);
   background: rgba(26,159,212,0.2);
 }
-.monitor-card button.mon-limit-btn:active {
+.monitor-card button.mon-limit-btn:active,
+.admin-audio-inline button.mon-limit-btn:active {
   transform: translateY(1px);
 }
 
-.monitor-card button.mon-clear-pcm {
+.monitor-card button.mon-clear-pcm,
+.admin-audio-inline button.mon-clear-pcm {
   margin-left: 4px;
   padding: 2px 8px;
   font-size: 9px;
@@ -315,11 +322,13 @@
   background: rgba(231,76,60,0.15);
   color: rgba(255,180,160,0.95);
 }
-.monitor-card button.mon-clear-pcm:hover {
+.monitor-card button.mon-clear-pcm:hover,
+.admin-audio-inline button.mon-clear-pcm:hover {
   border-color: rgba(231,76,60,0.55);
   background: rgba(231,76,60,0.22);
 }
-.monitor-card button.mon-clear-pcm:active {
+.monitor-card button.mon-clear-pcm:active,
+.admin-audio-inline button.mon-clear-pcm:active {
   opacity: 0.9;
 }
 .mon-green { color: #7dffb3 !important; }
@@ -605,4 +614,43 @@
 .admin-confirm-actions .btn {
   flex: 1;
   min-width: 120px;
+}
+
+.admin-audio-inline {
+  margin-top: 8px;
+  border: 1px solid rgba(26,159,212,0.16);
+  border-radius: 10px;
+  background: rgba(2,13,24,0.35);
+  overflow: hidden;
+}
+.admin-audio-inline > summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  color: rgba(168,228,255,0.72);
+  list-style: none;
+  user-select: none;
+}
+.admin-audio-inline > summary::-webkit-details-marker,
+.admin-audio-inline > summary::marker {
+  display: none;
+}
+.admin-audio-inline > summary::after {
+  content: "▶";
+  float: right;
+  opacity: 0.75;
+  transition: transform 0.2s ease;
+}
+.admin-audio-inline[open] > summary::after {
+  transform: rotate(90deg);
+}
+.admin-audio-inline-body {
+  padding: 0 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.admin-audio-inline .mon-section {
+  margin: 0;
 }
