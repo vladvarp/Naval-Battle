@@ -11,7 +11,7 @@
     if (typeof loadPcmMonitorLimits === "function") {
       return loadPcmMonitorLimits();
     }
-    return { maxDecoded: 15, maxPcmMb: 20, keepRecent: 3 };
+    return { maxDecoded: 35, maxPcmMb: 30, keepRecent: 3 };
   }
 
   function collectIosData() {

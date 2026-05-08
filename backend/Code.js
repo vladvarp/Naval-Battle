@@ -40,6 +40,7 @@ function doGet(e) {
   try {
     if (action === "state")    response = getState(e.parameter.playerId, e.parameter.roomId);
     else if (action === "getRooms") response = getRooms();
+    else if (action === "stats") response = getStats(e);
     else response = { ok: false, error: "Неизвестное действие" };
   } catch (err) {
     response = { ok: false, error: err.message };
@@ -82,6 +83,41 @@ function jsonResponse(obj) {
   return ContentService
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ── ПОЛУЧЕНИЕ ТУРНИРНОЙ ТАБЛИЦЫ (лист «Статистика») ──────────
+function getStats(e) {
+  try {
+    var sheet = getSheet(SHEET_NAME_STATS);
+    var DATA_START = 4; // 1=баннер, 2=подзаголовок, 3=шапка
+    var lastRow = sheet.getLastRow();
+    if (lastRow < DATA_START) return { ok: true, rows: [] };
+
+    var values = sheet.getRange(DATA_START, 1, lastRow - DATA_START + 1, 7).getValues();
+    var rows = [];
+    for (var i = 0; i < values.length; i++) {
+      var r = values[i];
+      var nick = r[1];
+      if (!nick) continue;
+      rows.push({
+        place: r[0],
+        nick: nick,
+        games: r[2] || 0,
+        wins: r[3] || 0,
+        losses: r[4] || 0,
+        winPct: r[5],
+        avgShots: r[6] || 0
+      });
+    }
+
+    return {
+      ok: true,
+      updatedAt: new Date().toISOString(),
+      rows: rows
+    };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 }
 
 // ── ПОЛУЧЕНИЕ ЛИСТА (создаёт если нет) ─────────────────────

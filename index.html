@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="./styles/ios_silent_note.css">
 <link rel="stylesheet" href="./styles/ping_monitor.css">
 <link rel="stylesheet" href="./styles/network_tracker_button.css">
+<link rel="stylesheet" href="./styles/leaderboard.css">
 
 </head>
 <body>
@@ -99,6 +100,10 @@
 
   <!-- ── ЭКРАН ВХОДА ──────────────────────────────────── -->
   <div id="loginScreen">
+    <button class="login-leaderboard-trigger" id="btnLeaderboard" onclick="openLeaderboard()" aria-label="Открыть таблицу лидеров" title="Таблица лидеров">
+      <span class="login-leaderboard-icon">🏆</span>
+      <span class="login-leaderboard-label">ЛИДЕРЫ</span>
+    </button>
     <div class="login-card">
       <h2>⚓ ВХОД В ИГРУ</h2>
       <div class="field-group">
@@ -385,6 +390,7 @@
 </div>
 
 <script src="./scripts/client.js"></script>
+<script src="./scripts/leaderboard.js"></script>
 <script src="./scripts/audio_engine/audio_pool.js"></script>
 <script src="./scripts/audio_engine/audio_switcher.js"></script>
 <script src="./scripts/audio_engine/audio_v2_clear_pcm_buffers.js"></script>
