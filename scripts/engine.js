@@ -1914,8 +1914,10 @@ async function restoreSoloSession() {
 
   restoreSoloLog();
 
-  // ── НОВАЯ ЛОГИКА: ОПРЕДЕЛЯЕМ ХОД ПО ИСТОРИИ ВЫСТРЕЛОВ ─────
-  solo.turn = determineSoloCurrentTurn();
+  // Ход сохраняется в localStorage при каждом промахе/передаче — доверяем ему.
+  // determineSoloCurrentTurn — только запас для старых сохранений без поля turn.
+  var inferredTurn = determineSoloCurrentTurn();
+  solo.turn = (s.turn === "player" || s.turn === "ai") ? s.turn : inferredTurn;
   addLog(`🔄 Восстановление после F5: ход ${solo.turn === "player" ? "ВАШ" : "КОМПЬЮТЕРА"}`, "miss");
 
   // Применяем состояние
@@ -1938,45 +1940,31 @@ async function restoreSoloSession() {
   return true;
 }
 
-// Определяет, чей сейчас ход, глядя на историю выстрелов + журнал (самая надёжная версия)
+// Определение хода для старых сохранений без поля turn. Учитывает только «настоящие»
+// выстрелы: синтетические угловые промахи (auto) не считаются — иначе после попадания
+// последней записью в shotsP*n оказывается промах и ход ошибочно уходит компьютеру.
 function determineSoloCurrentTurn() {
-  if (solo.shotsP1.length === 0 && solo.shotsP2.length === 0) {
-    return "player";
+  function substantive(shots) {
+    return shots.filter(function (s) { return !s.auto; });
   }
+  var p1 = substantive(solo.shotsP1);
+  var p2 = substantive(solo.shotsP2);
+  if (p1.length === 0 && p2.length === 0) return "player";
 
-  var lastP1 = solo.shotsP1.length > 0 ? solo.shotsP1[solo.shotsP1.length - 1] : null;
-  var lastP2 = solo.shotsP2.length > 0 ? solo.shotsP2[solo.shotsP2.length - 1] : null;
-
-  // Кто сделал больше выстрелов — тот стрелял последним
-  var lastShot = null;
-  var lastPlayer = null;
-
-  if (lastP1 && lastP2) {
-    if (solo.shotsP1.length > solo.shotsP2.length) {
-      lastShot = lastP1;
-      lastPlayer = "player";
+  var next = "player"; // партия всегда начинается с хода человека
+  var i = 0, j = 0;
+  while (i < p1.length || j < p2.length) {
+    if (next === "player") {
+      if (i >= p1.length) return "player";
+      var rs = p1[i++];
+      if (rs.result === "miss") next = "ai";
     } else {
-      lastShot = lastP2;
-      lastPlayer = "ai";
+      if (j >= p2.length) return "ai";
+      var as = p2[j++];
+      if (as.result === "miss") next = "player";
     }
-  } else if (lastP1) {
-    lastShot = lastP1;
-    lastPlayer = "player";
-  } else {
-    lastShot = lastP2;
-    lastPlayer = "ai";
   }
-
-  console.log(`🔍 determineSoloCurrentTurn → shotsP1=${solo.shotsP1.length}, shotsP2=${solo.shotsP2.length}, последний: ${lastPlayer} (${lastShot.result})`);
-
-  // Правило морского боя:
-  // Попадание / потопление → тот же игрок стреляет снова
-  if (lastShot.result === "hit" || lastShot.result === "sunk") {
-    return lastPlayer;
-  }
-
-  // Промах → ход переходит другому
-  return (lastPlayer === "player") ? "ai" : "player";
+  return next === "player" ? "player" : "ai";
 }
 
 // ── ПЕРЕХВАТ ВЫСТРЕЛА В СОЛО-РЕЖИМЕ ──────────────────────────
@@ -2031,6 +2019,8 @@ async function soloShoot(x, y) {
         if (!exists) solo.shotsP1.push({ x: c.x, y: c.y, result: "miss", auto: true });
       });
     }
+    // Сразу фиксируем смену хода при промахе — иначе F5 во время сообщения сохранит неверный turn
+    if (result.type === "miss") solo.turn = "ai";
     saveSoloSession();
 
     // Звуки
@@ -2063,8 +2053,6 @@ async function soloShoot(x, y) {
     } else {
       await showPhaseAnnouncement("💦 ПРОМАХ! ХОД КОМПЬЮТЕРА", "enemy");
       playEventSound("turnEnemy");           // ← звук хода компьютера
-      solo.turn = "ai";
-      saveSoloSession();   // ← обязательно сохраняем сразу после смены хода
       var gs3 = soloMakeGS();
       state.gameState = gs3;
       renderEnemyBoard(gs3);
@@ -2151,6 +2139,8 @@ async function soloAITurn() {
       if (!exists) solo.shotsP2.push({ x: c.x, y: c.y, result: "miss", auto: true });
     });
   }
+  // Сразу фиксируем ход после промаха ИИ — иначе F5 перед концом задержки сохранит turn: ai
+  if (result.type === "miss") solo.turn = "player";
   saveSoloSession();
 
   var resText = result.type === "hit" ? "Попадание!" : result.type === "sunk" ? "Потопил!" : "Промах";
@@ -2188,10 +2178,8 @@ async function soloAITurn() {
     unlockInput(); // Сбрасываем блокировку перед следующим ходом ИИ
     setTimeout(soloAITurn, 1600);
   } else {
-    // Передаём ход игроку
+    // Передаём ход игроку (turn уже сохранён сразу после промаха)
     await sleepMs(SFX_DELAY + 1400);
-    solo.turn = "player";
-    saveSoloSession();   // ← обязательно сохраняем сразу после смены хода
     await showPhaseAnnouncement("⚡ ВАШ ХОД!", "my");
     var wait = state.enemyShotShowUntil ? (state.enemyShotShowUntil - Date.now()) : 0;
     if (wait > 0) await sleepMs(wait);
