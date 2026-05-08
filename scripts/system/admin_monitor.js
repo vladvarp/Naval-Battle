@@ -6,12 +6,14 @@
 //   audio_ios.js → Web Audio API    (audioEngine + AudioContext)
 // ============================================================
 
-var _monitorInterval = null;
-var _monitorStartTime = Date.now();
-var _pcmDetailsOpen = false;
-var _pcmAutoCleanupRunning = false;
-var PCM_LIMITS_STORAGE_KEY = "mb_monitor_pcm_limits_v1";
-var PCM_LIMITS_DEFAULT = { maxDecoded: 10, maxPcmMb: 15, keepRecent: 2 };
+var _monitorInterval = null; // интервал для обновления монитора Пример: 1000 мс = 1 секунда
+var _monitorStartTime = Date.now(); // время начала работы монитора Пример: Date.now() = текущее время в миллисекундах
+var _pcmDetailsOpen = false; // флаг для открытия/закрытия деталей PCM Пример: false = закрыто, true = открыто
+var _pcmAutoCleanupRunning = false; // флаг для автоочистки PCM буферов Пример: false = не работает, true = работает
+var PCM_LIMITS_STORAGE_KEY = "mb_monitor_pcm_limits_v1"; // ключ для сохранения лимитов
+var PCM_LIMITS_DEFAULT = { maxDecoded: 15, maxPcmMb: 20, keepRecent: 3 }; // лимиты по умолчанию
+var MONITOR_VOLUME_STORAGE_KEY = "mb_monitor_audio_volume_pct"; // ключ для сохранения громкости
+var MONITOR_VOLUME_DEFAULT_PCT = 90; // громкость по умолчанию
 
 // ── УТИЛИТЫ ──────────────────────────────────────────────────
 
@@ -81,6 +83,42 @@ function savePcmMonitorLimits(maxDecoded, maxPcmMb, keepRecent) {
   if (payload.keepRecent > payload.maxDecoded) payload.keepRecent = payload.maxDecoded;
   try { localStorage.setItem(PCM_LIMITS_STORAGE_KEY, JSON.stringify(payload)); } catch (e) {}
   return payload;
+}
+
+function loadMonitorVolumePct() {
+  var out = MONITOR_VOLUME_DEFAULT_PCT;
+  try {
+    var raw = localStorage.getItem(MONITOR_VOLUME_STORAGE_KEY);
+    if (raw != null && raw !== "") out = _sanitizePcmLimitNum(raw, MONITOR_VOLUME_DEFAULT_PCT);
+  } catch (e) {}
+  if (out > 100) out = 100;
+  return out;
+}
+
+function saveMonitorVolumePct(pct) {
+  var safe = _sanitizePcmLimitNum(pct, MONITOR_VOLUME_DEFAULT_PCT);
+  if (safe > 100) safe = 100;
+  try { localStorage.setItem(MONITOR_VOLUME_STORAGE_KEY, String(safe)); } catch (e) {}
+  return safe;
+}
+
+function applyMonitorVolumePct(pct) {
+  var safePct = saveMonitorVolumePct(pct);
+  var vol = safePct / 100;
+  try {
+    if (typeof audioState !== "undefined" && audioState) audioState.volume = vol;
+  } catch (e) {}
+  try {
+    if (typeof applyAudioOutputState === "function") applyAudioOutputState();
+  } catch (e2) {}
+  try {
+    var cache = (typeof audioState !== "undefined" && audioState && audioState.cache) ? audioState.cache : {};
+    Object.keys(cache).forEach(function (src) {
+      var a = cache[src];
+      if (a && typeof a.volume === "number") a.volume = vol;
+    });
+  } catch (e3) {}
+  return safePct;
 }
 
 function isPcmLimitExceeded(audioIosData, limits) {
@@ -349,6 +387,8 @@ async function renderMonitor() {
   var container = document.getElementById("monitorBody");
   if (!container) return;
   var pcmLimits = loadPcmMonitorLimits();
+  var monitorVolumePct = loadMonitorVolumePct();
+  applyMonitorVolumePct(monitorVolumePct);
 
   // ── Сохраняем состояние PCM-блока перед перерисовкой ──
   var existingDetails = container.querySelector('.pcm-details') || document.getElementById('pcmDetails');
@@ -413,7 +453,12 @@ async function renderMonitor() {
   html += renderMonitorSection("🔊 АУДИО — ОБЩЕЕ", [
     { k: "Звук",          v: d.audio.enabled  ? "ВКЛ"  : "ВЫКЛ", valCls: d.audio.enabled  ? "mon-green" : "mon-red" },
     { k: "Разблокирован", v: d.audio.unlocked ? "ДА"   : "НЕТ",  valCls: d.audio.unlocked ? "mon-green" : "mon-red" },
-    { k: "Громкость",     v: d.audio.volume },
+    { k: "Громкость",
+      vRaw: '<span class="mon-limit-control">'
+        + '<button type="button" class="mon-limit-btn" data-role="audio-volume" data-delta="-5" title="Уменьшить громкость на 5%">−</button>'
+        + '<input type="text" class="mon-limit-input" id="monitorAudioVolumeInput" value="' + monitorVolumePct + '" readonly aria-readonly="true">'
+        + '<button type="button" class="mon-limit-btn" data-role="audio-volume" data-delta="5" title="Увеличить громкость на 5%">+</button>'
+        + '</span> <span class="mon-dim">%</span>' },
     { k: "Очередь",       v: (d.audio.queueLen || 0) + (d.audio.queuePlaying ? " (воспроизводится)" : " (пусто)"),
       valCls: d.audio.queueLen > 0 ? "mon-gold" : "" },
   ]);
@@ -783,6 +828,16 @@ function _showCopyFeedback(btn, symbol) {
       var role = btn.getAttribute("data-role");
       var delta = Number(btn.getAttribute("data-delta") || 0);
       if (!delta) return;
+
+      if (role === "audio-volume") {
+        var currentPct = loadMonitorVolumePct();
+        var nextPct = Math.max(0, Math.min(100, currentPct + delta));
+        var savedVol = applyMonitorVolumePct(nextPct);
+        var volInput = document.getElementById("monitorAudioVolumeInput");
+        if (volInput) volInput.value = String(savedVol);
+        renderMonitor();
+        return;
+      }
 
       var cur = loadPcmMonitorLimits();
       if (role === "pcm-limit-dec") cur.maxDecoded = Math.max(0, cur.maxDecoded + delta);
