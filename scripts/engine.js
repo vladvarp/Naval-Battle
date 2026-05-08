@@ -527,6 +527,8 @@ function updateWinProbability() {
   var divider    = document.getElementById("winProbDivider");
   var pctPlayer  = document.getElementById("winProbPctPlayer");
   var pctEnemy   = document.getElementById("winProbPctEnemy");
+  var turnsPlayer = document.getElementById("winProbTurnsPlayer");
+  var turnsEnemy  = document.getElementById("winProbTurnsEnemy");
   if (!fillPlayer) return;
 
   fillPlayer.style.width = playerPct + "%";
@@ -534,6 +536,8 @@ function updateWinProbability() {
   divider.style.left     = playerPct + "%";
   pctPlayer.textContent  = playerPct + "%";
   pctEnemy.textContent   = enemyPct + "%";
+  if (turnsPlayer) turnsPlayer.textContent = "ХОДОВ: " + enemyUntouched;
+  if (turnsEnemy)  turnsEnemy.textContent  = "ХОДОВ: " + myUntouched;
 }
 
 // ── ПОСТРОЕНИЕ МЕТОК СЕТКИ ────────────────────────────────────

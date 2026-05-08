@@ -1404,6 +1404,12 @@ min-width: 38px;
 display: inline-block;
 text-align: right;
 }
+.win-prob-meta {
+display: flex;
+justify-content: space-between;
+align-items: center;
+gap: 8px;
+}
 .win-prob-title {
 font-size: 9px;
 letter-spacing: 2px;
@@ -1411,6 +1417,16 @@ color: rgba(168,228,255,0.35);
 text-align: center;
 flex: 1;
 }
+.win-prob-turns-player,
+.win-prob-turns-enemy {
+font-size: 9px;
+letter-spacing: 1px;
+font-family: 'Share Tech Mono', monospace;
+font-variant-numeric: tabular-nums;
+white-space: nowrap;
+}
+.win-prob-turns-player { color: rgba(125,255,179,0.8); }
+.win-prob-turns-enemy { color: rgba(255,153,153,0.8); }
 .win-prob-track {
 position: relative;
 width: 100%;
