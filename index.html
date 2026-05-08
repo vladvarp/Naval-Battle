@@ -54,7 +54,7 @@
     </table>
     <div id="audioDebugNow" style="margin:-8px 0 10px;color:rgba(168,228,255,0.65);font-size:10px;letter-spacing:1px;"></div>
     <div class="audio-debug-actions">
-      <button class="btn btn-ghost btn-sm" onclick="reloadAudioCache()">🔄 Перезаписать кэш</button>
+      <button class="btn btn-ghost btn-sm" onclick="reloadAudioCache()">Перезаписать кэш</button>
       <span class="audio-debug-total" id="audioDebugTotal"></span>
     </div>
   </div>
@@ -100,12 +100,12 @@
       <span class="login-leaderboard-label">ЛИДЕРЫ</span>
     </button>
     <div class="login-card">
-      <h2>⚓ ВХОД В ИГРУ</h2>
+      <h2>ВХОД В ИГРУ</h2>
       <div class="field-group">
         <label>НИКНЕЙМ</label>
         <input type="text" id="inNickname" placeholder="Введите никнейм" maxlength="20" autocomplete="off">
       </div>
-      <button class="btn btn-primary" onclick="goToLobby()">🚢 ПРОДОЛЖИТЬ</button>
+      <button class="btn btn-primary" onclick="goToLobby()">ПРОДОЛЖИТЬ</button>
       <div id="loginMsg"></div>
     </div>
         <!-- Окно с уведомлением о режиме беззвучного -->
@@ -121,18 +121,18 @@
   <!-- ── ЭКРАН ЛОББИ ──────────────────────────────────── -->
   <div id="lobbyScreen">
     <div class="lobby-card">
-      <h2>🎯 СОЗДАТЬ КОМНАТУ</h2>
+      <h2>СОЗДАТЬ КОМНАТУ</h2>
       <div class="field-group">
         <label>ВАШЕ ИМЯ: <span id="lobbyNickname" style="color:var(--foam);"></span></label>
       </div>
-      <button class="btn btn-primary" style="margin-bottom:10px;" onclick="startSoloGame()">🤖 ИГРАТЬ С КОМПЬЮТЕРОМ</button>
-      <button class="btn btn-ghost" onclick="createRoom()">⚓ СОЗДАТЬ ОНЛАЙН КОМНАТУ</button>
+      <button class="btn btn-primary" style="margin-bottom:10px;" onclick="startSoloGame()">ИГРАТЬ С КОМПЬЮТЕРОМ</button>
+      <button class="btn btn-ghost" onclick="createRoom()">СОЗДАТЬ ОНЛАЙН КОМНАТУ</button>
       <div id="createMsg"></div>
     </div>
 
     <div class="lobby-card">
       <h2 style="display:flex;align-items:center;justify-content:space-between;">
-        <span>🌊 КОМНАТЫ</span>
+        <span>КОМНАТЫ</span>
         <span id="roomsTimer" style="font-size:10px;color:rgba(168,228,255,0.3);letter-spacing:1px;font-family:'Share Tech Mono',monospace;"></span>
       </h2>
       <div class="rooms-list" id="roomsList">
