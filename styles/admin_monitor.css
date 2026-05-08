@@ -259,6 +259,69 @@
   overflow-wrap: anywhere;
 }
 .mon-val-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.monitor-card input.mon-limit-input {
+  width: 62px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(26,159,212,0.28);
+  background: rgba(2,13,24,0.8);
+  color: rgba(230,245,255,0.95);
+  font-size: 10px;
+  font-family: "Share Tech Mono", ui-monospace, monospace;
+  text-align: center;
+}
+.monitor-card input.mon-limit-input:focus {
+  outline: none;
+  border-color: rgba(240,192,64,0.55);
+  box-shadow: 0 0 0 1px rgba(240,192,64,0.18);
+}
+.monitor-card .mon-limit-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.monitor-card button.mon-limit-btn {
+  min-width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid rgba(26,159,212,0.28);
+  background: rgba(26,159,212,0.1);
+  color: rgba(168,228,255,0.92);
+  cursor: pointer;
+  line-height: 1;
+  font-size: 13px;
+  font-weight: 700;
+}
+.monitor-card button.mon-limit-btn:hover {
+  border-color: rgba(26,159,212,0.5);
+  background: rgba(26,159,212,0.2);
+}
+.monitor-card button.mon-limit-btn:active {
+  transform: translateY(1px);
+}
+
+.monitor-card button.mon-clear-pcm {
+  margin-left: 4px;
+  padding: 2px 8px;
+  font-size: 9px;
+  letter-spacing: 0.03em;
+  line-height: 1.35;
+  border-radius: 4px;
+  cursor: pointer;
+  vertical-align: middle;
+  border: 1px solid rgba(231,76,60,0.35);
+  background: rgba(231,76,60,0.15);
+  color: rgba(255,180,160,0.95);
+}
+.monitor-card button.mon-clear-pcm:hover {
+  border-color: rgba(231,76,60,0.55);
+  background: rgba(231,76,60,0.22);
+}
+.monitor-card button.mon-clear-pcm:active {
+  opacity: 0.9;
+}
 .mon-green { color: #7dffb3 !important; }
 .mon-red   { color: #ff9999 !important; }
 .mon-gold  { color: var(--gold) !important; }
