@@ -1,6 +1,6 @@
 // ============================================================
 // МОРСКОЙ БОЙ — Google Apps Script Backend
-// Версия: 3.0 — Система комнат + Красивое оформление таблиц
+// Версия: 3.3 — Система комнат + Красивое оформление таблиц
 // Все комментарии на русском языке
 // ============================================================
 
@@ -14,7 +14,7 @@ var SHEET_NAME_DETAIL_LOG    = "Детальный лог";
 var SHEET_NAME_HISTORY       = "История игр";
 var SHEET_NAME_STATS         = "Статистика";
 var ROOM_TIMEOUT_MS          = 10 * 60 * 1000; // 10 минут бездействия
-var FORMAT_VERSION           = "v3.0"; // Увеличить при изменении структуры
+var FORMAT_VERSION           = "v3.3"; // Увеличить при изменении структуры
 
 // ── ЦВЕТОВАЯ ПАЛИТРА (тема «Морской бой») ──────────────────
 var CLR = {
@@ -65,6 +65,7 @@ function doPost(e) {
   var response;
   try {
     if      (action === "createRoom")      response = createRoom(data);
+    else if (action === "checkRoomAccess") response = checkRoomAccess(data);
     else if (action === "joinRoom")        response = joinRoom(data);
     else if (action === "move")            response = makeMove(data);
     else if (action === "restart")         response = restartGame(data);
@@ -181,18 +182,19 @@ function _setupRoomsSheet() {
       "👤 ID Игрока 2", "🎮 Никнейм 2",
       "📊 Статус", "🕐 Последняя активность",
       "🎯 Выстрелы П1 (JSON)", "🎯 Выстрелы П2 (JSON)",
-      "🏆 Победитель ID", "🔄 Чей ход (ID)"
+      "🏆 Победитель ID", "🔄 Чей ход (ID)",
+      "🔐 Тип комнаты", "🔑 Хэш пароля"
     ]);
   }
 
   // Ширины столбцов
-  var widths = [100, 150, 120, 150, 120, 100, 170, 250, 250, 150, 150];
+  var widths = [100, 150, 120, 150, 120, 100, 170, 250, 250, 150, 150, 120, 220];
   for (var i = 0; i < widths.length; i++) {
     sheet.setColumnWidth(i + 1, widths[i]);
   }
 
   // Заголовок
-  var hdr = sheet.getRange(1, 1, 1, 11);
+  var hdr = sheet.getRange(1, 1, 1, 13);
   hdr.setBackground(CLR.NAVY)
      .setFontColor(CLR.HEADER_TEXT)
      .setFontWeight("bold")
@@ -204,7 +206,7 @@ function _setupRoomsSheet() {
   sheet.setFrozenRows(1);
 
   // Чередующиеся строки данных (если есть)
-  _applyDataRowStyles(sheet, 11);
+  _applyDataRowStyles(sheet, 13);
 
   // Условное форматирование статуса
   _applyStatusConditional(sheet, 6);
@@ -647,6 +649,26 @@ function generateRoomId() {
   return id;
 }
 
+function _hashPassword(pwd) {
+  pwd = String(pwd || "");
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, pwd, Utilities.Charset.UTF_8);
+  return bytes.map(function (b) {
+    var v = b;
+    if (v < 0) v = 256 + v;
+    var s = v.toString(16);
+    return s.length === 1 ? "0" + s : s;
+  }).join("");
+}
+
+function _safeEquals(a, b) {
+  a = String(a || "");
+  b = String(b || "");
+  if (a.length !== b.length) return false;
+  var out = 0;
+  for (var i = 0; i < a.length; i++) out |= (a.charCodeAt(i) ^ b.charCodeAt(i));
+  return out === 0;
+}
+
 // ── ГЕНЕРАЦИЯ РАССТАНОВКИ КОРАБЛЕЙ ──────────────────────────
 function generateShips() {
   var grid = [];
@@ -800,7 +822,9 @@ function readRooms() {
       player2Nick:  data[i][4],
       phase:        data[i][5],
       lastActivity: data[i][6],
-      winner:       data[i][9] || ""
+      winner:       data[i][9] || "",
+      roomType:     data[i][11] || "open",
+      passHash:     data[i][12] || ""
     };
     try { room.shotsP1 = JSON.parse(data[i][7] || "[]"); } catch(e) { room.shotsP1 = []; }
     try { room.shotsP2 = JSON.parse(data[i][8] || "[]"); } catch(e) { room.shotsP2 = []; }
@@ -926,11 +950,14 @@ function getRooms() {
     if (r.phase !== "waiting") continue;
     var lastMs = r.lastActivity ? new Date(r.lastActivity).getTime() : 0;
     var idleSec = Math.floor((now - lastMs) / 1000);
+    var roomType = (r.roomType === "closed") ? "closed" : "open";
     result.push({
       roomId:       r.roomId,
       player1Nick:  r.player1Nick,
       idleSec:      idleSec,
-      lastActivity: r.lastActivity
+      lastActivity: r.lastActivity,
+      roomType:     roomType,
+      isPrivate:    roomType === "closed"
     });
   }
   return { ok: true, rooms: result };
@@ -944,6 +971,15 @@ function createRoom(data) {
   var nickname = (data.nickname || "").trim();
   if (!nickname) return { ok: false, error: "Введите никнейм" };
 
+  var roomType = (data.roomType === "closed") ? "closed" : "open";
+  var password = (data.password || "");
+  if (roomType === "closed") {
+    if (String(password).trim().length < 4) return { ok: false, error: "Пароль комнаты должен быть не короче 4 символов" };
+  } else {
+    password = "";
+  }
+  var passHash = password ? _hashPassword(password) : "";
+
   var roomId   = generateRoomId();
   var playerId = generateId();
   var ships    = resolvePlayerShips(data);
@@ -952,8 +988,8 @@ function createRoom(data) {
   // Создаём комнату
   var roomSheet = getSheet(SHEET_NAME_ROOMS);
   var newRoomRow = (roomSheet.getLastRow() || 1) + 1;
-  roomSheet.appendRow([roomId, playerId, nickname, "", "", "waiting", now, "[]", "[]", "", ""]);
-  _styleNewRow(roomSheet, newRoomRow, 11);
+  roomSheet.appendRow([roomId, playerId, nickname, "", "", "waiting", now, "[]", "[]", "", "", roomType, passHash]);
+  _styleNewRow(roomSheet, newRoomRow, 13);
 
   // Добавляем игрока
   var playerSheet = getSheet(SHEET_NAME_PLAYERS);
@@ -964,6 +1000,29 @@ function createRoom(data) {
   return { ok: true, playerId: playerId, roomId: roomId, slot: 1 };
 }
 
+// ── ПРОВЕРИТЬ ДОСТУП К КОМНАТЕ (без входа) ─────────────────────
+function checkRoomAccess(data) {
+  initSheets();
+  cleanupOldRooms();
+
+  var roomId   = (data.roomId || "").trim();
+  var password = (data.password || "");
+  if (!roomId) return { ok: false, error: "Не указан roomId" };
+
+  var room = findRoom(roomId);
+  if (!room) return { ok: false, error: "Комната не найдена или устарела" };
+  if (room.phase !== "waiting") return { ok: false, error: "Комната уже занята или игра началась" };
+  if (room.player2Id) return { ok: false, error: "Комната уже заполнена" };
+
+  var roomType = (room.roomType === "closed") ? "closed" : "open";
+  if (roomType === "closed") {
+    if (String(password).trim().length < 4) return { ok: false, error: "Нужен пароль комнаты" };
+    if (!_safeEquals(_hashPassword(password), room.passHash || "")) return { ok: false, error: "Неверный пароль комнаты" };
+  }
+
+  return { ok: true, roomId: roomId, roomType: roomType };
+}
+
 // ── ВОЙТИ В КОМНАТУ ──────────────────────────────────────────
 function joinRoom(data) {
   initSheets();
@@ -971,6 +1030,7 @@ function joinRoom(data) {
 
   var nickname = (data.nickname || "").trim();
   var roomId   = (data.roomId   || "").trim();
+  var password = (data.password || "");
 
   if (!nickname) return { ok: false, error: "Введите никнейм" };
   if (!roomId)   return { ok: false, error: "Укажите ID комнаты" };
@@ -979,6 +1039,7 @@ function joinRoom(data) {
   if (!room) return { ok: false, error: "Комната не найдена или устарела" };
   if (room.phase !== "waiting") return { ok: false, error: "Комната уже занята или игра началась" };
   if (room.player2Id) return { ok: false, error: "Комната уже заполнена" };
+  var roomType = (room.roomType === "closed") ? "closed" : "open";
 
   // Переподключение (тот же никнейм — игрок 1 переподключается)
   if (room.player1Nick === nickname) {
@@ -987,6 +1048,11 @@ function joinRoom(data) {
       updatePlayerLastSeen(existingPlayer.row);
       return { ok: true, playerId: existingPlayer.playerId, roomId: roomId, slot: 1, reconnected: true, phase: room.phase };
     }
+  }
+
+  if (roomType === "closed") {
+    if (String(password).trim().length < 4) return { ok: false, error: "Нужен пароль комнаты" };
+    if (!_safeEquals(_hashPassword(password), room.passHash || "")) return { ok: false, error: "Неверный пароль комнаты" };
   }
 
   var playerId = generateId();

@@ -383,6 +383,35 @@ text-align: center;
 }
 
 /* Список комнат */
+.rooms-search input[type="text"] {
+  font-size: 12px;
+  padding: 9px 12px;
+}
+
+.room-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border: 1px solid rgba(26,159,212,0.25);
+  background: rgba(26,159,212,0.08);
+  color: rgba(168,228,255,0.6);
+}
+.room-badge--open {
+  border-color: rgba(46,204,113,0.35);
+  background: rgba(46,204,113,0.12);
+  color: rgba(125,255,179,0.85);
+}
+.room-badge--closed {
+  border-color: rgba(240,192,64,0.45);
+  background: rgba(240,192,64,0.12);
+  color: rgba(240,192,64,0.95);
+}
+
 .rooms-list {
 display: flex;
 flex-direction: column;
@@ -416,6 +445,18 @@ color: var(--white);
 white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .room-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+.room-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+.room-name-row .room-name {
+  flex: 1;
+  min-width: 0;
+}
 .room-id {
 font-size: 10px;
 color: rgba(168,228,255,0.4);
@@ -1117,6 +1158,87 @@ margin-left: auto;
 /* ── РУЧНАЯ РАССТАНОВКА КОРАБЛЕЙ ───────────────────────── */
 body.placement-open {
 overflow: hidden;
+}
+
+/* ── ОВЕРЛЕИ ДОСТУПА К КОМНАТЕ (тип/пароль) ─────────────────── */
+body.online-room-access-open {
+  overflow: hidden;
+}
+.online-room-access-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1450;
+  background: rgba(2,13,24,0.9);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  padding: 14px;
+  align-items: center;
+  justify-content: center;
+}
+.online-room-access-overlay.show { display: flex; }
+.online-room-access-card {
+  width: 100%;
+  max-width: 520px;
+  background: rgba(4,31,53,0.98);
+  border: 1px solid rgba(26,159,212,0.35);
+  border-radius: 12px;
+  padding: 18px 16px 14px;
+  box-shadow: 0 0 60px rgba(26,159,212,0.12);
+}
+.online-room-access-title {
+  font-family: 'Russo One', sans-serif;
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: var(--foam);
+  text-align: center;
+  margin-bottom: 4px;
+}
+.online-room-access-subtitle {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: rgba(168,228,255,0.55);
+  text-align: center;
+  margin-bottom: 12px;
+}
+.online-room-access-type-row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.online-room-access-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(26,159,212,0.22);
+  background: rgba(2,13,24,0.45);
+  cursor: pointer;
+  user-select: none;
+}
+.online-room-access-type input {
+  accent-color: var(--foam);
+}
+.online-room-access-type-label {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: rgba(168,228,255,0.75);
+}
+.online-room-access-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.online-room-access-error {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: #ff9999;
+  min-height: 14px;
 }
 .placement-overlay {
   display: none;

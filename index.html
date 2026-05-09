@@ -135,6 +135,10 @@
         <span>КОМНАТЫ</span>
         <span id="roomsTimer" style="font-size:10px;color:rgba(168,228,255,0.3);letter-spacing:1px;font-family:'Share Tech Mono',monospace;"></span>
       </h2>
+      <div class="field-group rooms-search" style="margin-bottom:0;">
+        <label>ПОИСК (имя или код комнаты)</label>
+        <input type="text" id="roomsSearch" placeholder="Например: Alex или 3F7KQ" maxlength="32" autocomplete="off">
+      </div>
       <div class="rooms-list" id="roomsList">
         <div class="rooms-loading"><div class="spin-icon"></div>ЗАГРУЗКА...</div>
       </div>
@@ -398,6 +402,7 @@
 <script src="./scripts/engine/placement_setup.js"></script>
 <script src="./scripts/engine/online/api_transport.js"></script>
 <script src="./scripts/engine/shared/entry_boards.js"></script>
+<script src="./scripts/engine/online/room_access.js"></script>
 <script src="./scripts/engine/online/match_room_sync.js"></script>
 <script src="./scripts/engine/solo/solo_modes.js"></script>
 <script src="./scripts/engine/shared/bootstrap_init.js"></script>

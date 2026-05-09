@@ -47,6 +47,7 @@ var state = {
   gameState:    null,
   pollTimer:    null,
   lobbyTimer:   null,
+  lobbyRooms:   [],
   log:          [],
   winnerShown:  false,
   inputLocked:  false,
@@ -193,7 +194,8 @@ async function loadRooms() {
    try {
      var res = await apiGetRooms();
      if (!res.ok) return;
-     renderRooms(res.rooms || []);
+     state.lobbyRooms = res.rooms || [];
+     renderRooms(state.lobbyRooms);
    } catch(e) {
      document.getElementById("roomsList").innerHTML =
        '<div class="rooms-empty"><span class="icon">⚠</span>Ошибка подключения</div>';
@@ -203,13 +205,24 @@ async function loadRooms() {
 
 function renderRooms(rooms) {
   var list = document.getElementById("roomsList");
-  if (!rooms.length) {
+  var qEl = document.getElementById("roomsSearch");
+  var query = qEl ? String(qEl.value || "").trim().toLowerCase() : "";
+  var filtered = rooms || [];
+  if (query) {
+    filtered = filtered.filter(function (r) {
+      var name = String(r.player1Nick || "").toLowerCase();
+      var code = String(r.roomId || "").toLowerCase();
+      return name.indexOf(query) !== -1 || code.indexOf(query) !== -1;
+    });
+  }
+
+  if (!filtered.length) {
     list.innerHTML = '<div class="rooms-empty"><span class="icon">🌊</span>Нет открытых комнат.<br>Создайте свою!</div>';
     return;
   }
-  rooms.sort(function(a, b) { return (a.idleSec || 0) - (b.idleSec || 0); });
+  filtered.sort(function(a, b) { return (a.idleSec || 0) - (b.idleSec || 0); });
   var html = "";
-  rooms.forEach(function(r) {
+  filtered.forEach(function(r) {
     var idle = r.idleSec || 0;
     var idleText, idleClass;
     if (idle < 60) {
@@ -222,15 +235,21 @@ function renderRooms(rooms) {
       idleText  = Math.floor(idle / 60) + " мин назад";
       idleClass = "stale";
     }
+    var isPrivate = !!r.isPrivate;
+    var badgeCls = isPrivate ? "room-badge room-badge--closed" : "room-badge room-badge--open";
+    var badgeText = isPrivate ? "🔒 закрытая" : "🌐 открытая";
     html += '<div class="room-item">' +
       '<div class="room-info">' +
-        '<div class="room-name">⚓ ' + escapeHtml(r.player1Nick) + '</div>' +
+        '<div class="room-name-row">' +
+          '<div class="room-name">⚓ ' + escapeHtml(r.player1Nick) + '</div>' +
+          '<span class="' + badgeCls + '">' + badgeText + '</span>' +
+        '</div>' +
         '<div class="room-meta">' +
           '<span class="room-id">КОД: ' + r.roomId + '</span>' +
           '<span class="room-idle ' + idleClass + '">⏱ ' + idleText + '</span>' +
         '</div>' +
       '</div>' +
-      '<button class="btn btn-primary btn-sm" style="width:auto;flex-shrink:0;" onclick="joinRoom(\'' + r.roomId + '\', \'' + escapeHtml(r.player1Nick || "") + '\')">ВОЙТИ</button>' +
+      '<button class="btn btn-primary btn-sm" style="width:auto;flex-shrink:0;" onclick="joinRoom(\'' + r.roomId + '\', \'' + escapeHtml(r.player1Nick || "") + '\', ' + (isPrivate ? "1" : "0") + ')">ВОЙТИ</button>' +
     '</div>';
   });
   list.innerHTML = html;
@@ -312,11 +331,23 @@ function closeAdminConfirm(confirmed) {
 // ── СОЗДАТЬ КОМНАТУ ───────────────────────────────────────────
 async function createRoom() {
   if (!state.nickname) return;
+  var access = null;
+  if (window.openOnlineRoomCreatePrompt) {
+    access = await window.openOnlineRoomCreatePrompt();
+  }
+  if (!access) return;
+
   var board = await openPlacementSetup({ context: "online", defaultMode: "random" });
   if (!board) return;
   showCreateMsg("Создание комнаты...", "info");
   try {
-    var res = await apiPost({ action: "createRoom", nickname: state.nickname, shipBoard: board });
+    var res = await apiPost({
+      action: "createRoom",
+      nickname: state.nickname,
+      shipBoard: board,
+      roomType: access.type,
+      password: access.password
+    });
     if (!res.ok) { showCreateMsg(res.error, "error"); return; }
     state.playerId = res.playerId;
     state.mySlot   = res.slot;
@@ -328,7 +359,7 @@ async function createRoom() {
 }
 
 // ── ВОЙТИ В КОМНАТУ ───────────────────────────────────────────
-async function joinRoom(roomId, ownerNick) {
+async function joinRoom(roomId, ownerNick, isPrivate) {
   if (!state.nickname) return;
 
   // ── ЗАЩИТА ОТ ВХОДА ПОД ТЕМ ЖЕ НИКОМ, ЧТО У СОЗДАТЕЛЯ ──
@@ -343,11 +374,58 @@ async function joinRoom(roomId, ownerNick) {
     return;
   }
 
+  var password = null;
+  if (isPrivate) {
+    if (window.openOnlineRoomPasswordPrompt) {
+      password = await window.openOnlineRoomPasswordPrompt(roomId, {
+        checkFn: async function (pwd) {
+          var accessRes = await apiPost({
+            action: "checkRoomAccess",
+            roomId: roomId,
+            password: pwd
+          });
+          if (!accessRes || !accessRes.ok) {
+            return { ok: false, error: accessRes && accessRes.error ? accessRes.error : "Неверный пароль" };
+          }
+          return { ok: true };
+        }
+      });
+    }
+    if (!password) return;
+  }
+
+  // Для открытых комнат всё равно проверяем доступ до расстановки (занято/удалено).
+  if (!isPrivate) {
+    try {
+      var accessRes2 = await apiPost({ action: "checkRoomAccess", roomId: roomId });
+      if (!accessRes2.ok) {
+        document.getElementById("createMsg").innerHTML =
+          '<div class="message message-error">' + accessRes2.error + '</div>';
+        return;
+      }
+    } catch (e) {
+      document.getElementById("createMsg").innerHTML =
+        '<div class="message message-error">Ошибка подключения</div>';
+      return;
+    }
+  }
+
   var board = await openPlacementSetup({ context: "online", defaultMode: "random" });
   if (!board) return;
 
+  // Блокируем интерфейс и показываем загрузку перед входом в комнату
+  lockInput("ВХОД В КОМНАТУ...");
+  document.getElementById("createMsg").innerHTML =
+    '<div class="message message-info">Подключение к комнате...</div>';
+
   try {
-    var res = await apiPost({ action: "joinRoom", nickname: state.nickname, roomId: roomId, shipBoard: board });
+    var res = await apiPost({
+      action: "joinRoom",
+      nickname: state.nickname,
+      roomId: roomId,
+      shipBoard: board,
+      password: password
+    });
     if (!res.ok) {
       // Показываем ошибку от сервера
       document.getElementById("createMsg").innerHTML =
@@ -363,8 +441,26 @@ async function joinRoom(roomId, ownerNick) {
   } catch(e) {
     document.getElementById("createMsg").innerHTML =
       '<div class="message message-error">Ошибка подключения</div>';
+  } finally {
+    unlockInput();
   }
 }
+
+// ── ЛОББИ: поиск по комнатам ───────────────────────────────────
+(function initRoomsSearch() {
+  var _inited = false;
+  function ensure() {
+    if (_inited) return;
+    var qEl = document.getElementById("roomsSearch");
+    if (!qEl) return;
+    _inited = true;
+    qEl.addEventListener("input", function () {
+      renderRooms(state.lobbyRooms || []);
+    });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ensure);
+  else ensure();
+})();
 
 // ── ПЕРЕХОД В ИГРОВОЙ ЭКРАН ───────────────────────────────────
 async function enterGameScreen() {
