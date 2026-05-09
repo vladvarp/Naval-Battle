@@ -3,9 +3,6 @@
 // ============================================================
 
 // ── КОНФИГУРАЦИЯ ─────────────────────────────────────────────
-var API_URL = "https://script.google.com/macros/s/AKfycbyVfnfxEIZ3SxirW8psgqczWBLUB4_cWmccJLiGbpRTgyl4BACIYlXRTBQQpJ4JXSx8UQ/exec";
-var POLL_INTERVAL  = 800;  // мс — polling состояния игры
-var LOBBY_INTERVAL = 10000; // мс — обновление списка комнат
-
-// ── АУДИО ────────────────────────────────────────────────────
-// Вынесено в отдельный файл для упрощения поддержки.
+var API_URL = "https://script.google.com/macros/s/AKfycby0eMmGYmtj-CjgPiTV__J9f1coBFEBkrbLzNyuQ3L4zSQltPU9Ij7OXQCQwAlCmSGSeg/exec";
+var POLL_INTERVAL  = 5000; // мс — polling состояния игры
+var ROOM_TIMEOUT_MS = 5 * 60 * 1000; // мс — удаление комнаты, если никто не подключился

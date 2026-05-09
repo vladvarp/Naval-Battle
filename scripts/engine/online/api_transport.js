@@ -2,6 +2,10 @@
 
 // ── API ───────────────────────────────────────────────────────
 function apiPost(data) {
+  data = data || {};
+  if (typeof ROOM_TIMEOUT_MS !== "undefined") {
+    data.roomTimeoutMs = ROOM_TIMEOUT_MS;
+  }
   return fetch(API_URL, {
     method:  "POST",
     body:    JSON.stringify(data),
@@ -14,9 +18,16 @@ function apiGet(params) {
   var url = API_URL + "?action=state";
   if (params.playerId) url += "&playerId=" + encodeURIComponent(params.playerId);
   if (params.roomId)   url += "&roomId="   + encodeURIComponent(params.roomId);
+  if (typeof ROOM_TIMEOUT_MS !== "undefined") {
+    url += "&roomTimeoutMs=" + encodeURIComponent(ROOM_TIMEOUT_MS);
+  }
   return fetch(url, { redirect: "follow" }).then(function(r){ return r.json(); });
 }
 
 function apiGetRooms() {
-  return fetch(API_URL + "?action=getRooms", { redirect: "follow" }).then(function(r){ return r.json(); });
+  var url = API_URL + "?action=getRooms";
+  if (typeof ROOM_TIMEOUT_MS !== "undefined") {
+    url += "&roomTimeoutMs=" + encodeURIComponent(ROOM_TIMEOUT_MS);
+  }
+  return fetch(url, { redirect: "follow" }).then(function(r){ return r.json(); });
 }

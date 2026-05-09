@@ -131,9 +131,12 @@
     </div>
 
     <div class="lobby-card">
-      <h2 style="display:flex;align-items:center;justify-content:space-between;">
+      <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
         <span>КОМНАТЫ</span>
-        <span id="roomsTimer" style="font-size:10px;color:rgba(168,228,255,0.3);letter-spacing:1px;font-family:'Share Tech Mono',monospace;"></span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span id="roomsTimer" style="font-size:10px;color:rgba(168,228,255,0.3);letter-spacing:1px;font-family:'Share Tech Mono',monospace;"></span>
+          <button class="btn btn-ghost btn-sm" type="button" style="width:auto;padding:6px 10px;" onclick="loadRooms()">Обновить</button>
+        </div>
       </h2>
       <div class="field-group rooms-search" style="margin-bottom:0;">
         <label>ПОИСК (имя или код комнаты)</label>

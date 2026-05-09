@@ -46,7 +46,6 @@ var state = {
   myBoard:      null,
   gameState:    null,
   pollTimer:    null,
-  lobbyTimer:   null,
   lobbyRooms:   [],
   log:          [],
   winnerShown:  false,
@@ -162,30 +161,13 @@ function backToLogin() {
 }
 
 // ── ЛОББИ: СПИСОК КОМНАТ ──────────────────────────────────────
-var lobbyCountdown = 3;
-var lobbyCountdownTimer = null;
 
 function startLobbyPolling() {
    loadRooms();
-   state.lobbyTimer = setInterval(function() {
-     loadRooms();
-   }, LOBBY_INTERVAL);
 }
 
 function stopLobbyPolling() {
-   if (state.lobbyTimer) { clearInterval(state.lobbyTimer); state.lobbyTimer = null; }
-   if (lobbyCountdownTimer) { clearInterval(lobbyCountdownTimer); lobbyCountdownTimer = null; }
-}
-
-function startLobbyCountdown() {
-   lobbyCountdown = Math.ceil(LOBBY_INTERVAL / 1000);
-   if (lobbyCountdownTimer) clearInterval(lobbyCountdownTimer);
-   
-   lobbyCountdownTimer = setInterval(function() {
-     lobbyCountdown--;
-     var el = document.getElementById("roomsTimer");
-     if (el) el.textContent = "обновление через " + Math.max(0, lobbyCountdown) + "с";
-   }, 1000);
+   // Авто-обновление лобби отключено: список обновляется только вручную.
 }
 
 async function loadRooms() {
@@ -200,7 +182,7 @@ async function loadRooms() {
      document.getElementById("roomsList").innerHTML =
        '<div class="rooms-empty"><span class="icon">⚠</span>Ошибка подключения</div>';
    }
-   startLobbyCountdown();
+   if (el) el.textContent = "";
 }
 
 function renderRooms(rooms) {

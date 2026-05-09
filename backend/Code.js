@@ -13,7 +13,27 @@ var SHEET_NAME_DETAIL_LOG    = "Детальный лог";
 var SHEET_NAME_HISTORY       = "История игр";
 var SHEET_NAME_STATS         = "Статистика";
 var ROOM_TIMEOUT_MS          = 10 * 60 * 1000; // 10 минут бездействия
-var FORMAT_VERSION           = "v3.4"; // Увеличить при изменении структуры
+var FORMAT_VERSION           = "v3.6"; // Увеличить при изменении структуры
+
+function resolveRoomTimeoutMs(rawValue) {
+  var ms = parseInt(rawValue, 10);
+  if (isNaN(ms)) return ROOM_TIMEOUT_MS;
+  // Защита от слишком маленьких/больших значений с клиента.
+  if (ms < 60 * 1000) ms = 60 * 1000;
+  if (ms > 30 * 60 * 1000) ms = 30 * 60 * 1000;
+  return ms;
+}
+
+function resolveRoomCreatedAt(roomId, createdAtRaw, fallbackRaw) {
+  if (createdAtRaw) return createdAtRaw;
+  // Для старых строк без колонки createdAt восстанавливаем время из roomId: id_<timestamp>_<rnd>.
+  var m = /^id_(\d+)_/.exec(String(roomId || ""));
+  if (m && m[1]) {
+    var ts = parseInt(m[1], 10);
+    if (!isNaN(ts) && ts > 0) return new Date(ts).toISOString();
+  }
+  return fallbackRaw || "";
+}
 
 // ── ЦВЕТОВАЯ ПАЛИТРА (тема «Морской бой») ──────────────────
 var CLR = {
@@ -37,11 +57,12 @@ function doGet(e) {
   e = e || {};
   e.parameter = e.parameter || {};
   var action = e.parameter.action || "";
+  var roomTimeoutMs = resolveRoomTimeoutMs(e.parameter.roomTimeoutMs);
   var startTime = new Date();
   var response;
   try {
-    if (action === "state")    response = getState(e.parameter.playerId, e.parameter.roomId);
-    else if (action === "getRooms") response = getRooms();
+    if (action === "state")    response = getState(e.parameter.playerId, e.parameter.roomId, roomTimeoutMs);
+    else if (action === "getRooms") response = getRooms(roomTimeoutMs);
     else if (action === "stats") response = getStats(e);
     else response = { ok: false, error: "Неизвестное действие" };
   } catch (err) {
@@ -69,15 +90,16 @@ function doPost(e) {
   }
 
   var action = data.action || "";
+  var roomTimeoutMs = resolveRoomTimeoutMs(data.roomTimeoutMs);
   var response;
   try {
-    if      (action === "createRoom")      response = createRoom(data);
-    else if (action === "checkRoomAccess") response = checkRoomAccess(data);
-    else if (action === "joinRoom")        response = joinRoom(data);
+    if      (action === "createRoom")      response = createRoom(data, roomTimeoutMs);
+    else if (action === "checkRoomAccess") response = checkRoomAccess(data, roomTimeoutMs);
+    else if (action === "joinRoom")        response = joinRoom(data, roomTimeoutMs);
     else if (action === "move")            response = makeMove(data);
     else if (action === "restart")         response = restartGame(data);
-    else if (action === "listRoomsAdmin")  response = listRoomsAdmin(data);
-    else if (action === "leave")           response = leaveGame(data);
+    else if (action === "listRoomsAdmin")  response = listRoomsAdmin(data, roomTimeoutMs);
+    else if (action === "leave")           response = leaveGame(data, roomTimeoutMs);
     else response = { ok: false, error: "Неизвестное действие: " + action };
   } catch (err) {
     response = { ok: false, error: err.message };
@@ -190,18 +212,20 @@ function _setupRoomsSheet() {
       "📊 Статус", "🕐 Последняя активность",
       "🎯 Выстрелы П1 (JSON)", "🎯 Выстрелы П2 (JSON)",
       "🏆 Победитель ID", "🔄 Чей ход (ID)",
-      "🔐 Тип комнаты", "🔑 Хэш пароля"
+      "🔐 Тип комнаты", "🔑 Хэш пароля", "🆕 Время создания"
     ]);
   }
+  // Для уже существующих таблиц добавляем заголовок новой колонки.
+  if (!sheet.getRange(1, 14).getValue()) sheet.getRange(1, 14).setValue("🆕 Время создания");
 
   // Ширины столбцов
-  var widths = [100, 150, 120, 150, 120, 100, 170, 250, 250, 150, 150, 120, 220];
+  var widths = [100, 150, 120, 150, 120, 100, 170, 250, 250, 150, 150, 120, 220, 170];
   for (var i = 0; i < widths.length; i++) {
     sheet.setColumnWidth(i + 1, widths[i]);
   }
 
   // Заголовок
-  var hdr = sheet.getRange(1, 1, 1, 13);
+  var hdr = sheet.getRange(1, 1, 1, 14);
   hdr.setBackground(CLR.NAVY)
      .setFontColor(CLR.HEADER_TEXT)
      .setFontWeight("bold")
@@ -213,7 +237,7 @@ function _setupRoomsSheet() {
   sheet.setFrozenRows(1);
 
   // Чередующиеся строки данных (если есть)
-  _applyDataRowStyles(sheet, 13);
+  _applyDataRowStyles(sheet, 14);
 
   // Условное форматирование статуса
   _applyStatusConditional(sheet, 6);
@@ -837,6 +861,7 @@ function readRooms() {
       player2Nick:  data[i][4],
       phase:        data[i][5],
       lastActivity: data[i][6],
+      createdAt:    resolveRoomCreatedAt(data[i][0], data[i][13], data[i][6]),
       winner:       data[i][9] || "",
       roomType:     data[i][11] || "open",
       passHash:     data[i][12] || ""
@@ -875,17 +900,22 @@ function updateRoomActivity(row) {
 }
 
 // ── УДАЛЕНИЕ УСТАРЕВШИХ КОМНАТ (LAZY CLEANUP) ───────────────
-function cleanupOldRooms() {
+function cleanupOldRooms(roomTimeoutMs) {
+  var timeoutMs = resolveRoomTimeoutMs(roomTimeoutMs);
   var sheet = getSheet(SHEET_NAME_ROOMS);
   var data  = sheet.getDataRange().getValues();
   var now   = Date.now();
   // Удаляем снизу вверх чтобы не сбивать индексы строк
   for (var i = data.length - 1; i >= 1; i--) {
     if (!data[i][0]) continue;
-    var lastActivity = data[i][6];
-    if (!lastActivity) continue;
-    var lastMs = new Date(lastActivity).getTime();
-    if (now - lastMs > ROOM_TIMEOUT_MS) {
+    var phase = data[i][5];
+    // waiting: считаем от момента создания комнаты, а не от последней активности создателя.
+    var baseTime = (phase === "waiting")
+      ? resolveRoomCreatedAt(data[i][0], data[i][13], data[i][6])
+      : data[i][6];
+    if (!baseTime) continue;
+    var baseMs = new Date(baseTime).getTime();
+    if (now - baseMs > timeoutMs) {
       var roomId = data[i][0];
       deletePlayersOfRoom(roomId);
       // Очищаем перед удалением
@@ -954,22 +984,23 @@ function updatePlayerLastSeen(row) {
 }
 
 // ── СПИСОК КОМНАТ (ЛОББИ) ────────────────────────────────────
-function getRooms() {
+function getRooms(roomTimeoutMs) {
   initSheets();
-  cleanupOldRooms();
+  cleanupOldRooms(roomTimeoutMs);
   var rooms = readRooms();
   var now   = Date.now();
   var result = [];
   for (var i = 0; i < rooms.length; i++) {
     var r = rooms[i];
     if (r.phase !== "waiting") continue;
-    var lastMs = r.lastActivity ? new Date(r.lastActivity).getTime() : 0;
+    var lastMs = r.createdAt ? new Date(r.createdAt).getTime() : 0;
     var idleSec = Math.floor((now - lastMs) / 1000);
     var roomType = (r.roomType === "closed") ? "closed" : "open";
     result.push({
       roomId:       r.roomId,
       player1Nick:  r.player1Nick,
       idleSec:      idleSec,
+      createdAt:    r.createdAt,
       lastActivity: r.lastActivity,
       roomType:     roomType,
       isPrivate:    roomType === "closed"
@@ -979,9 +1010,9 @@ function getRooms() {
 }
 
 // ── СОЗДАТЬ КОМНАТУ ──────────────────────────────────────────
-function createRoom(data) {
+function createRoom(data, roomTimeoutMs) {
   initSheets();
-  cleanupOldRooms();
+  cleanupOldRooms(roomTimeoutMs);
 
   var nickname = (data.nickname || "").trim();
   if (!nickname) return { ok: false, error: "Введите никнейм" };
@@ -1003,8 +1034,8 @@ function createRoom(data) {
   // Создаём комнату
   var roomSheet = getSheet(SHEET_NAME_ROOMS);
   var newRoomRow = (roomSheet.getLastRow() || 1) + 1;
-  roomSheet.appendRow([roomId, playerId, nickname, "", "", "waiting", now, "[]", "[]", "", "", roomType, passHash]);
-  _styleNewRow(roomSheet, newRoomRow, 13);
+  roomSheet.appendRow([roomId, playerId, nickname, "", "", "waiting", now, "[]", "[]", "", "", roomType, passHash, now]);
+  _styleNewRow(roomSheet, newRoomRow, 14);
 
   // Добавляем игрока
   var playerSheet = getSheet(SHEET_NAME_PLAYERS);
@@ -1016,9 +1047,9 @@ function createRoom(data) {
 }
 
 // ── ПРОВЕРИТЬ ДОСТУП К КОМНАТЕ (без входа) ─────────────────────
-function checkRoomAccess(data) {
+function checkRoomAccess(data, roomTimeoutMs) {
   initSheets();
-  cleanupOldRooms();
+  cleanupOldRooms(roomTimeoutMs);
 
   var roomId   = (data.roomId || "").trim();
   var password = (data.password || "");
@@ -1039,9 +1070,9 @@ function checkRoomAccess(data) {
 }
 
 // ── ВОЙТИ В КОМНАТУ ──────────────────────────────────────────
-function joinRoom(data) {
+function joinRoom(data, roomTimeoutMs) {
   initSheets();
-  cleanupOldRooms();
+  cleanupOldRooms(roomTimeoutMs);
 
   var nickname = (data.nickname || "").trim();
   var roomId   = (data.roomId   || "").trim();
@@ -1099,9 +1130,9 @@ function joinRoom(data) {
 }
 
 // ── ПОЛУЧЕНИЕ СОСТОЯНИЯ ИГРЫ ────────────────────────────────
-function getState(playerId, roomId) {
+function getState(playerId, roomId, roomTimeoutMs) {
   initSheets();
-  cleanupOldRooms();
+  cleanupOldRooms(roomTimeoutMs);
 
   if (!roomId) return { ok: false, error: "Не указан roomId" };
 
@@ -1309,8 +1340,8 @@ function _logGameHistory(room, winner, loser, winnerShots) {
     var sheet = getSheet(SHEET_NAME_HISTORY);
     var now   = new Date();
 
-    // Длительность: от lastActivity комнаты (примерно)
-    var startMs = room.lastActivity ? new Date(room.lastActivity).getTime() : now.getTime();
+    // Длительность: от момента создания комнаты.
+    var startMs = room.createdAt ? new Date(room.createdAt).getTime() : now.getTime();
     var durationMin = Math.round((now.getTime() - startMs) / 60000);
 
     // Кол-во выстрелов
@@ -1498,7 +1529,7 @@ function isGameOver(board) {
 }
 
 // ── ЯВНЫЙ ВЫХОД ИГРОКА ──────────────────────────────────────
-function leaveGame(data) {
+function leaveGame(data, roomTimeoutMs) {
   var playerId = data.playerId;
   var roomId   = data.roomId;
   if (!playerId) return { ok: false, error: "Нет playerId" };
@@ -1523,6 +1554,7 @@ function leaveGame(data) {
           sheet.getRange(i + 1, 10).setValue("");
           sheet.getRange(i + 1, 11).setValue("");
           sheet.getRange(i + 1, 7).setValue(new Date().toISOString());
+          sheet.getRange(i + 1, 14).setValue(new Date().toISOString());
           break;
         }
       }
@@ -1545,11 +1577,11 @@ function leaveGame(data) {
 }
 
 // ── СПИСОК КОМНАТ (ADMIN) ────────────────────────────────────
-function listRoomsAdmin(data) {
+function listRoomsAdmin(data, roomTimeoutMs) {
   var password = (data.password || "").trim();
   if (password !== ADMIN_PASSWORD) return { ok: false, error: "Неверный пароль" };
   initSheets();
-  cleanupOldRooms();
+  cleanupOldRooms(roomTimeoutMs);
   var rooms = readRooms();
   var out = [];
   for (var i = 0; i < rooms.length; i++) {
