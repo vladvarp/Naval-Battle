@@ -1,6 +1,5 @@
 // ============================================================
 // МОРСКОЙ БОЙ — Google Apps Script Backend
-// Версия: 3.3 — Система комнат + Красивое оформление таблиц
 // Все комментарии на русском языке
 // ============================================================
 
@@ -14,7 +13,7 @@ var SHEET_NAME_DETAIL_LOG    = "Детальный лог";
 var SHEET_NAME_HISTORY       = "История игр";
 var SHEET_NAME_STATS         = "Статистика";
 var ROOM_TIMEOUT_MS          = 10 * 60 * 1000; // 10 минут бездействия
-var FORMAT_VERSION           = "v3.3"; // Увеличить при изменении структуры
+var FORMAT_VERSION           = "v3.4"; // Увеличить при изменении структуры
 
 // ── ЦВЕТОВАЯ ПАЛИТРА (тема «Морской бой») ──────────────────
 var CLR = {
@@ -34,6 +33,9 @@ var CLR = {
 
 // ── ОБРАБОТЧИК GET-ЗАПРОСОВ ─────────────────────────────────
 function doGet(e) {
+  // При ручном «Выполнить» в редакторе e не передаётся — только у реального HTTP GET.
+  e = e || {};
+  e.parameter = e.parameter || {};
   var action = e.parameter.action || "";
   var startTime = new Date();
   var response;
@@ -54,6 +56,11 @@ function doPost(e) {
   var data = {};
   var startTime = new Date();
   try {
+    if (!e || !e.postData || e.postData.contents == null) {
+      var errResp = { ok: false, error: "Нет тела запроса (ожидается POST из клиента)" };
+      _writeDetailLog("POST", "unknown", {}, errResp, startTime);
+      return jsonResponse(errResp);
+    }
     data = JSON.parse(e.postData.contents);
   } catch (err) {
     var errResp = { ok: false, error: "Неверный JSON" };
@@ -617,6 +624,14 @@ function _writeDetailLog(method, action, inputData, response, startTime) {
     }
     var respStr = JSON.stringify(respCopy);
     if (respStr.length > 250) respStr = respStr.substring(0, 247) + "…";
+
+    // Обрезаем лог: не более 2000 строк данных (без шапки)
+    var MAX_LOG_ROWS = 2000;
+    var dataRows = (sheet.getLastRow() || 1) - 1; // строк без заголовка
+    if (dataRows >= MAX_LOG_ROWS) {
+      var excess = dataRows - MAX_LOG_ROWS + 1; // удаляем столько, чтобы после вставки было ровно 2000
+      sheet.deleteRows(2, excess);              // удаляем самые старые (сразу после шапки)
+    }
 
     var rowNum = (sheet.getLastRow() || 1) + 1;
     sheet.appendRow([

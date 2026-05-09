@@ -3,7 +3,7 @@
 // ============================================================
 
 // ── КОНФИГУРАЦИЯ ─────────────────────────────────────────────
-var API_URL = "https://script.google.com/macros/s/AKfycbw7RRWeCI7ltnSYqKmPX5iJ4ZRicWFPAC3kaS2_UdG_6BpnX67ga6de8RQsOYwk-ux7rg/exec";
+var API_URL = "https://script.google.com/macros/s/AKfycbyVfnfxEIZ3SxirW8psgqczWBLUB4_cWmccJLiGbpRTgyl4BACIYlXRTBQQpJ4JXSx8UQ/exec";
 var POLL_INTERVAL  = 800;  // мс — polling состояния игры
 var LOBBY_INTERVAL = 10000; // мс — обновление списка комнат
 
