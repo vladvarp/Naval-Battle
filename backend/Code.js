@@ -13,7 +13,7 @@ var SHEET_NAME_DETAIL_LOG    = "Детальный лог";
 var SHEET_NAME_HISTORY       = "История игр";
 var SHEET_NAME_STATS         = "Статистика";
 var ROOM_TIMEOUT_MS          = 10 * 60 * 1000; // 10 минут бездействия
-var FORMAT_VERSION           = "v3.6"; // Увеличить при изменении структуры
+var FORMAT_VERSION           = "v3.7"; // Увеличить при изменении структуры
 
 function resolveRoomTimeoutMs(rawValue) {
   var ms = parseInt(rawValue, 10);
@@ -170,6 +170,7 @@ function initSheets() {
   _setupDetailLogSheet();
   _setupHistorySheet();
   _setupStatsSheet();
+  rebuildStatsFromHistory();
   _setupStateSheet();
   _reorderSheets();
 
@@ -1379,93 +1380,126 @@ function _logGameHistory(room, winner, loser, winnerShots) {
   } catch(e) {}
 }
 
+// ── ЗАПИСЬ ТУРНИРНОЙ ТАБЛИЦЫ ИЗ АГРЕГАТА ─────────────────────
+// statsMap: ник → { games, wins, losses, totalWinShots }
+function _writeStatsFromMap(statsMap) {
+  var sheet = getSheet(SHEET_NAME_STATS);
+  // Данные начинаются с 4-й строки (1=баннер, 2=подзаголовок, 3=шапка)
+  var DATA_START = 4;
+  var lastRow = sheet.getLastRow();
+
+  var sorted = [];
+  for (var n in statsMap) {
+    if (statsMap.hasOwnProperty(n)) {
+      var s = statsMap[n];
+      sorted.push({
+        nick: n,
+        games: s.games,
+        wins: s.wins,
+        losses: s.losses,
+        winPct: s.games > 0 ? Math.round((s.wins / s.games) * 100) : 0,
+        avgShots: s.wins > 0 ? Math.round(s.totalWinShots / s.wins) : 0
+      });
+    }
+  }
+  sorted.sort(function(a, b) {
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    return b.winPct - a.winPct;
+  });
+
+  if (lastRow >= DATA_START) {
+    sheet.getRange(DATA_START, 1, lastRow - DATA_START + 1, 7).clearContent();
+    sheet.getRange(DATA_START, 1, lastRow - DATA_START + 1, 7).clearFormat();
+  }
+
+  for (var j = 0; j < sorted.length; j++) {
+    var rowNum = DATA_START + j;
+    var entry = sorted[j];
+    var medal = j === 0 ? "🥇" : j === 1 ? "🥈" : j === 2 ? "🥉" : String(j + 1);
+    sheet.getRange(rowNum, 1, 1, 7).setValues([[
+      medal,
+      entry.nick,
+      entry.games,
+      entry.wins,
+      entry.losses,
+      entry.winPct + "%",
+      entry.avgShots
+    ]]);
+
+    var rowBg = j === 0 ? CLR.GOLD : (j % 2 === 0 ? CLR.SEAFOAM : CLR.WHITE);
+    var rowBold = j === 0;
+    sheet.getRange(rowNum, 1, 1, 7)
+         .setBackground(rowBg)
+         .setFontColor(CLR.DARK_TEXT)
+         .setFontSize(9)
+         .setFontWeight(rowBold ? "bold" : "normal")
+         .setHorizontalAlignment("center")
+         .setVerticalAlignment("middle");
+    sheet.setRowHeight(rowNum, 26);
+  }
+}
+
+// ── ПЕРЕСЧЁТ СТАТИСТИКИ ИЗ ЛИСТА «ИСТОРИЯ ИГР» ───────────────
+function rebuildStatsFromHistory() {
+  try {
+    var historySheet = getSheet(SHEET_NAME_HISTORY);
+    var lastRow = historySheet.getLastRow();
+    var statsMap = {};
+    if (lastRow >= 2) {
+      var values = historySheet.getRange(2, 1, lastRow, 8).getValues();
+      for (var i = 0; i < values.length; i++) {
+        var row = values[i];
+        var winNick = String(row[2] || "").trim();
+        var loseNick = String(row[3] || "").trim();
+        var winShots = parseInt(row[4], 10);
+        if (isNaN(winShots)) winShots = 0;
+        if (!winNick || !loseNick) continue;
+        if (!statsMap[winNick]) statsMap[winNick] = { games: 0, wins: 0, losses: 0, totalWinShots: 0 };
+        if (!statsMap[loseNick]) statsMap[loseNick] = { games: 0, wins: 0, losses: 0, totalWinShots: 0 };
+        statsMap[winNick].games++;
+        statsMap[winNick].wins++;
+        statsMap[winNick].totalWinShots += winShots;
+        statsMap[loseNick].games++;
+        statsMap[loseNick].losses++;
+      }
+    }
+    _writeStatsFromMap(statsMap);
+  } catch (e) {}
+}
+
 // ── ОБНОВЛЕНИЕ СТАТИСТИКИ ────────────────────────────────────
 function _updateStats(winnerNick, loserNick, winnerShotCount) {
   try {
     var sheet = getSheet(SHEET_NAME_STATS);
-    // Данные начинаются с 4-й строки (1=баннер, 2=подзаголовок, 3=шапка)
     var DATA_START = 4;
     var lastRow = sheet.getLastRow();
 
-    // Читаем текущие данные
     var statsMap = {};
     if (lastRow >= DATA_START) {
       var existing = sheet.getRange(DATA_START, 1, lastRow - DATA_START + 1, 7).getValues();
       for (var i = 0; i < existing.length; i++) {
         var nick = existing[i][1];
         if (!nick) continue;
+        var w = existing[i][3] || 0;
         statsMap[nick] = {
           games:   existing[i][2] || 0,
-          wins:    existing[i][3] || 0,
+          wins:    w,
           losses:  existing[i][4] || 0,
-          totalWinShots: (existing[i][6] || 0) * (existing[i][3] || 1) // восстанавливаем сумму
+          totalWinShots: w > 0 ? (existing[i][6] || 0) * w : 0
         };
       }
     }
 
-    // Обновляем победителя
     if (!statsMap[winnerNick]) statsMap[winnerNick] = { games: 0, wins: 0, losses: 0, totalWinShots: 0 };
     statsMap[winnerNick].games++;
     statsMap[winnerNick].wins++;
     statsMap[winnerNick].totalWinShots += winnerShotCount;
 
-    // Обновляем проигравшего
     if (!statsMap[loserNick]) statsMap[loserNick] = { games: 0, wins: 0, losses: 0, totalWinShots: 0 };
     statsMap[loserNick].games++;
     statsMap[loserNick].losses++;
 
-    // Сортируем по победам desc, потом по win% desc
-    var sorted = [];
-    for (var n in statsMap) {
-      if (statsMap.hasOwnProperty(n)) {
-        var s = statsMap[n];
-        sorted.push({
-          nick: n,
-          games: s.games,
-          wins: s.wins,
-          losses: s.losses,
-          winPct: s.games > 0 ? Math.round((s.wins / s.games) * 100) : 0,
-          avgShots: s.wins > 0 ? Math.round(s.totalWinShots / s.wins) : 0
-        });
-      }
-    }
-    sorted.sort(function(a, b) {
-      if (b.wins !== a.wins) return b.wins - a.wins;
-      return b.winPct - a.winPct;
-    });
-
-    // Очищаем и записываем данные
-    if (lastRow >= DATA_START) {
-      sheet.getRange(DATA_START, 1, lastRow - DATA_START + 1, 7).clearContent();
-      sheet.getRange(DATA_START, 1, lastRow - DATA_START + 1, 7).clearFormat();
-    }
-
-    for (var j = 0; j < sorted.length; j++) {
-      var rowNum = DATA_START + j;
-      var entry = sorted[j];
-      var medal = j === 0 ? "🥇" : j === 1 ? "🥈" : j === 2 ? "🥉" : String(j + 1);
-      sheet.getRange(rowNum, 1, 1, 7).setValues([[
-        medal,
-        entry.nick,
-        entry.games,
-        entry.wins,
-        entry.losses,
-        entry.winPct + "%",
-        entry.avgShots
-      ]]);
-
-      // Стили строки
-      var rowBg = j === 0 ? CLR.GOLD : (j % 2 === 0 ? CLR.SEAFOAM : CLR.WHITE);
-      var rowBold = j === 0;
-      sheet.getRange(rowNum, 1, 1, 7)
-           .setBackground(rowBg)
-           .setFontColor(CLR.DARK_TEXT)
-           .setFontSize(9)
-           .setFontWeight(rowBold ? "bold" : "normal")
-           .setHorizontalAlignment("center")
-           .setVerticalAlignment("middle");
-      sheet.setRowHeight(rowNum, 26);
-    }
+    _writeStatsFromMap(statsMap);
   } catch(e) {}
 }
 
