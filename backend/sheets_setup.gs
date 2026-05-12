@@ -141,7 +141,7 @@ function _setupPlayersSheet() {
     ]);
   }
 
-  var widths = [150, 120, 100, 60, 400, 170];
+  var widths = [160, 115, 115, 80, 115, 170];
   for (var i = 0; i < widths.length; i++) {
     sheet.setColumnWidth(i + 1, widths[i]);
   }
