@@ -158,7 +158,8 @@ function makeMove(data) {
     roomId,
     playerId,
     shooter.nickname,
-    x, y,
+    formatShotColumnForLog(x),
+    formatShotRowForLog(y),
     result
   ]);
   _styleNewRow(logSheet, newLogRow, 7);

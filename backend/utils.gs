@@ -95,3 +95,18 @@ function _safeEquals(a, b) {
   for (var i = 0; i < a.length; i++) out |= (a.charCodeAt(i) ^ b.charCodeAt(i));
   return out === 0;
 }
+
+// ── Подписи клеток для листа «Журнал выстрелов» (как на доске: X — А…К, Y — 1…10) ──
+var GRID_COLUMN_LABELS = "АБВГДЕЖЗИК";
+
+function formatShotColumnForLog(x) {
+  var xi = parseInt(x, 10);
+  if (isNaN(xi) || xi < 0 || xi > 9) return String(x);
+  return GRID_COLUMN_LABELS.charAt(xi);
+}
+
+function formatShotRowForLog(y) {
+  var yi = parseInt(y, 10);
+  if (isNaN(yi) || yi < 0 || yi > 9) return String(y);
+  return yi + 1;
+}

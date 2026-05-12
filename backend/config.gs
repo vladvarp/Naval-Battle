@@ -13,7 +13,7 @@ var SHEET_NAME_DETAIL_LOG    = "Детальный лог";
 var SHEET_NAME_HISTORY       = "История игр";
 var SHEET_NAME_STATS         = "Статистика";
 var ROOM_TIMEOUT_MS          = 10 * 60 * 1000; // 10 минут бездействия
-var FORMAT_VERSION           = "v3.7"; // Увеличить при изменении структуры
+var FORMAT_VERSION           = "v3.8"; // Увеличить при изменении структуры
 
 function resolveRoomTimeoutMs(rawValue) {
   var ms = parseInt(rawValue, 10);
